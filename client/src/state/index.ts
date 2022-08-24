@@ -5,3 +5,5 @@ export const [rooms, setRooms] = createSignal<string[]>([]);
 export const [selectedRoom, setSelectedRoom] = createSignal<string | null>(
   null
 );
+export const [consumerAudio, setConsumerAudio] =
+  createSignal<MediaStream | null>(null);

@@ -8,6 +8,7 @@ import type {
   Transport,
 } from 'mediasoup-client/lib/types';
 import { socketPromise } from '../socket/socket-promise';
+import { setConsumerAudio } from '../../state';
 
 interface ConsumerProps {
   kind: MediaKind;
@@ -52,21 +53,38 @@ export class SignalingHandler {
   }
 
   async createProducerTransport(): Promise<void> {
-    const params = await socketPromise(this.socket)('createWebRtcTransport');
+    const params = await socketPromise(this.socket)('create_webrtc_transport');
 
     this._producerTransport = this._device!.createSendTransport(params);
 
     this._producerTransport!.on(
       'connect',
       ({ dtlsParameters }, callback, errback) => {
-        // TODO
+        socketPromise(this.socket)('connect_transport', {
+          dtlsParameters,
+          transportId: params.id,
+        }).then((data) => {
+          if (data.error) {
+            errback(data.error);
+          }
+
+          callback();
+        });
       }
     );
 
     this._producerTransport!.on(
       'produce',
       ({ kind, rtpParameters }, callback, errback) => {
-        // TODO
+        console.log(`--- [Producer Transport]: produce ${kind}] ---`);
+
+        socketPromise(this.socket)('produce', {
+          kind,
+          rtpParameters,
+          transportId: this._producerTransport!.id,
+        }).then((producerId) => {
+          callback(producerId);
+        });
       }
     );
 
@@ -89,14 +107,23 @@ export class SignalingHandler {
   }
 
   async createConsumerTransport(): Promise<void> {
-    const params = await socketPromise(this.socket)('createWebRtcTransport');
+    const params = await socketPromise(this.socket)('create_webrtc_transport');
 
     this._consumerTransport = this._device!.createRecvTransport(params);
 
     this._consumerTransport!.on(
       'connect',
       ({ dtlsParameters }, callback, errback) => {
-        // TODO
+        socketPromise(this.socket)('connect_transport', {
+          dtlsParameters,
+          transportId: params.id,
+        }).then((data) => {
+          if (data.error) {
+            errback(data.error);
+          }
+
+          callback();
+        });
       }
     );
 
@@ -122,7 +149,7 @@ export class SignalingHandler {
     const { consumer, stream, kind } = await this.createConsumer(producerId);
 
     if (kind === 'audio') {
-      // TODO update audios
+      setConsumerAudio(stream);
     } else {
       // TODO update video
     }
@@ -141,17 +168,16 @@ export class SignalingHandler {
   }
 
   async createConsumer(producerId: string): Promise<ConsumerProps> {
-    const { id, kind, rtpParameters } = await socketPromise(this.socket)(
-      'consume',
-      {
-        producerId,
-        consumerTransportId: this._consumerTransport!.id,
-        routerRtpCapabilities: this._device!.rtpCapabilities,
-      }
-    );
+    const { consumerId, kind, rtpParameters } = await socketPromise(
+      this.socket
+    )('consume', {
+      producerId,
+      consumerTransportId: this._consumerTransport!.id,
+      routerRtpCapabilities: this._device!.rtpCapabilities,
+    });
 
     const consumer = await this._consumerTransport!.consume({
-      id,
+      id: consumerId,
       kind,
       producerId,
       rtpParameters,

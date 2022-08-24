@@ -1,7 +1,18 @@
-import mediasoup, { createWorker } from 'mediasoup';
-import type { Router, RtpCapabilities } from 'mediasoup/node/lib/types';
+import type {
+  DtlsParameters,
+  Router,
+  RtpCapabilities,
+} from 'mediasoup/node/lib/types';
+
 import { MsPeer } from './ms-peer';
 import { createRouter } from './ms-router';
+import { config } from './mediasoup-config';
+import {
+  ConsumeParams,
+  ConsumerParams,
+  ProduceParams,
+  TransportParams,
+} from './types';
 
 export class MsRoom {
   private _peers: Map<string, MsPeer>;
@@ -13,7 +24,123 @@ export class MsRoom {
   }
 
   addPeer(peer: MsPeer): void {
-    this._peers.set(peer.socketId, peer);
+    this._peers.set(peer.id, peer);
+  }
+
+  async createWebRtcTransport(peerId: string): Promise<TransportParams> {
+    const peer = this._peers.get(peerId);
+
+    if (!peer) {
+      console.log(`--- [CreateWebRtcTransport] peer ${peerId} not found ---`);
+      throw new Error('Peer not found');
+    }
+
+    const { maxIncomingBitrate, initialAvailableOutgoingBitrate, listenIps } =
+      config.mediasoup.webRtcTransport;
+
+    const transport = await this._router.createWebRtcTransport({
+      listenIps,
+      enableUdp: true,
+      enableTcp: true,
+      preferUdp: true,
+      initialAvailableOutgoingBitrate,
+    });
+
+    if (maxIncomingBitrate) {
+      try {
+        await transport.setMaxIncomingBitrate(maxIncomingBitrate);
+      } catch (error) {
+        console.log(
+          '--- [CreateWebRtcTransport] error while setting maxIncomingBitrate ---',
+          error
+        );
+      }
+    }
+
+    transport.on('dtlsstatechange', (dtlsState: string) => {
+      if (dtlsState === 'closed') {
+        console.log(`--- [Transport ${transport.id}] dtls state closed ---`);
+        transport.close();
+      }
+    });
+
+    peer.addTransport(transport);
+
+    return {
+      id: transport.id,
+      iceParameters: transport.iceParameters,
+      iceCandidates: transport.iceCandidates,
+      dtlsParameters: transport.dtlsParameters,
+    };
+  }
+
+  async connectTransport(
+    peerId: string,
+    params: { id: string; dtls: DtlsParameters }
+  ): Promise<void> {
+    const peer = this._peers.get(peerId);
+
+    if (!peer) {
+      console.log(`--- [ConnectTransport] peer ${peerId} not found ---`);
+      throw new Error('Peer not found');
+    }
+
+    try {
+      await peer.connectTransport(params);
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async produce(peerId: string, params: ProduceParams): Promise<string> {
+    const peer = this._peers.get(peerId);
+
+    if (!peer) {
+      console.log(`--- [Produce] peer ${peerId} not found ---`);
+      throw new Error('Peer not found');
+    }
+
+    const producer = await this._peers.get(peerId)!.createProducer(params);
+    // Broadcast producer to everyone but me [peerId]
+
+    return producer.id;
+  }
+
+  async consume(
+    peerId: string,
+    params: ConsumeParams
+  ): Promise<ConsumerParams> {
+    const peer = this._peers.get(peerId);
+
+    if (!peer) {
+      console.log(`--- [Consume] peer ${peerId} not found ---`);
+      throw new Error('Peer not found');
+    }
+
+    if (
+      !this._router.canConsume({
+        producerId: params.producerId,
+        rtpCapabilities: params.rtpCapabilities,
+      })
+    ) {
+      console.log('--- [Consume] cannot consume ---');
+      throw new Error('Consume cannot consume');
+    }
+
+    const consumer = await this._peers.get(peerId)!.createConsumer(params);
+
+    consumer.on('producerclose', () => {
+      peer.removeConsumer(consumer.id);
+      // emit to the consumer
+    });
+
+    return {
+      consumerId: consumer.id,
+      producerId: params.producerId,
+      kind: consumer.kind,
+      type: consumer.type,
+      rtpParameters: consumer.rtpParameters,
+    };
   }
 
   getRouterCapabilities(): RtpCapabilities {
