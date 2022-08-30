@@ -1,14 +1,11 @@
-import { Socket } from 'socket.io-client';
-import { setRooms } from '../../state';
+import type { Socket } from 'socket.io-client';
 
-export class ServerHandler {
-  constructor(private readonly socket: Socket) {
-    this.initListeners();
-  }
+import { ServerHandler } from './server-handler';
 
-  initListeners() {
-    this.socket.on('rooms', (rooms: string[]) => {
-      setRooms(rooms);
-    });
+export namespace ServerAPI {
+  let _serverHandler: ServerHandler | null;
+
+  export function connect(socket: Socket) {
+    _serverHandler = new ServerHandler(socket);
   }
 }

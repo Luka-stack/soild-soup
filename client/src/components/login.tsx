@@ -17,7 +17,10 @@ export const Login: Component = () => {
   };
 
   return (
-    <form onSubmit={onSubmitForm} class="flex flex-col p-4 w-72 h-40">
+    <form
+      onSubmit={onSubmitForm}
+      class="flex flex-col p-4 w-72 h-40 items-center"
+    >
       <label for="username" class="w-48 text-slate-400">
         Username
       </label>

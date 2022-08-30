@@ -4,9 +4,10 @@
   "license": "MIT",
   "scripts": {
     "start": "ts-node src/index.ts",
-    "dev": "nodemon --exec DEBUG=mediasoup:* ts-node src/index.ts"
+    "dev": "DEBUG=mediasoup:* nodemon --exec ts-node src/index.ts"
   },
   "dependencies": {
+    "@solidjs/router": "^0.4.2",
     "express": "^4.18.1",
     "mediasoup": "^3.10.5",
     "socket.io": "^4.5.1"

@@ -2,15 +2,12 @@ import { Server, Socket } from 'socket.io';
 import type { Server as HttpServer } from 'http';
 import { MsRoom } from './ms-room';
 import { MsPeer } from './ms-peer';
-import { RtpCapabilities } from 'mediasoup/node/lib/RtpParameters';
 import {
   ConsumeParams,
   ConsumerParams,
   ProduceParams,
   TransportParams,
 } from './types';
-import { DtlsParameters } from 'mediasoup/node/lib/WebRtcTransport';
-import { socketPromise } from '../client/src/lib/socket/socket-promise';
 
 export class MsServer {
   private _server: Server;
@@ -37,18 +34,26 @@ export class MsServer {
     return ['Room 1', 'Room 2', 'Room 3', 'Room 4', 'Room 5'];
   }
 
-  joinRoom(socket: Socket, roomName: string, nickname: string): void {
+  async joinRoom(
+    socket: Socket,
+    nickname: string,
+    roomName: string
+  ): Promise<void> {
     let msRoom = this._msRooms.get(roomName);
 
     if (!msRoom) {
-      msRoom = new MsRoom(roomName);
+      msRoom = new MsRoom(roomName, this._server);
+      this._msRooms.set(roomName, msRoom);
+      console.log('--- [MsServer]:JoinRoom created new room ', roomName, '---');
     }
 
     const peer = new MsPeer(socket.id, nickname);
     msRoom.addPeer(peer);
     socket.data.roomName = roomName;
 
-    socket.emit('joined_room', msRoom.getRouterCapabilities());
+    const routerParams = await msRoom.getRouterCapabilities();
+
+    socket.emit('joined_room', routerParams);
   }
 
   async onCreateWebRtcTransport(
@@ -56,6 +61,9 @@ export class MsServer {
     callback: (params: TransportParams) => void
   ): Promise<void> {
     const roomName = socket.data.roomName;
+
+    console.log('--- socket.data ---', socket.data);
+
     if (!this._msRooms.has(roomName)) {
       console.log(
         `--- [onCreateWebRtcTransport] room ${roomName} doesnt exist ---`
@@ -67,6 +75,11 @@ export class MsServer {
       const params = await this._msRooms
         .get(roomName)!
         .createWebRtcTransport(socket.id);
+
+      console.log(
+        '--- [MsServer]:onCreateWebRtcTransport created tranport ---'
+      );
+
       callback(params);
     } catch (error) {
       console.log(`--- [onCreateWebRtcTransport] ${error} ---`);
@@ -108,6 +121,12 @@ export class MsServer {
       .produce(socket.id, params);
 
     callback(producerId);
+
+    // setTimeout(() => {
+    this._msRooms
+      .get(roomName)!
+      .broadcast(socket.id, 'new_producers', [producerId]);
+    // }, 5000);
   }
 
   async onConsume(
@@ -127,6 +146,7 @@ export class MsServer {
         .consume(socket.id, params);
       callback(consumerParams);
     } catch (error) {
+      console.log('--- [onConsume] error ---', error);
       // TODO send error
     }
   }
@@ -139,13 +159,13 @@ export class MsServer {
         socket.emit('rooms', this.getRooms());
       });
 
-      socket.on('join', (roomName, nickname) => {
-        this.joinRoom(socket, roomName, nickname);
+      socket.on('join', (nickname, roomName) => {
+        this.joinRoom(socket, nickname, roomName);
       });
 
       // CLEAN MEDIASOUP COMUNICATION
 
-      socket.on('create_webrtc_transport', (callback) => {
+      socket.on('create_webrtc_transport', ({}, callback) => {
         this.onCreateWebRtcTransport(socket, callback);
       });
 

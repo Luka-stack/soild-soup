@@ -25,20 +25,24 @@ export class MsPeer {
       return;
     }
 
+    console.log('--- [MsPeer]:addTransport transport', transport.id, 'added');
+
     this._transports.set(transport.id, transport);
   }
 
   async connectTransport(params: {
-    id: string;
-    dtls: DtlsParameters;
+    transportId: string;
+    dtlsParameters: DtlsParameters;
   }): Promise<void> {
-    if (this._transports.has(params.id)) {
-      console.log(`--- [ConnectTransport] transport ${params.id} doesnt exist`);
+    if (!this._transports.has(params.transportId)) {
+      console.log(
+        `--- [ConnectTransport] transport ${params.transportId} doesnt exist`
+      );
       throw new Error("Transport doesn't exist");
     }
 
-    await this._transports.get(params.id)!.connect({
-      dtlsParameters: params.dtls,
+    await this._transports.get(params.transportId)!.connect({
+      dtlsParameters: params.dtlsParameters,
     });
   }
 
@@ -47,9 +51,9 @@ export class MsPeer {
     kind,
     rtpParameters,
   }: ProduceParams): Promise<Producer> {
-    if (this._transports.has(transportId)) {
+    if (!this._transports.has(transportId)) {
       console.log(`--- [CreateProducer] transport ${transportId} doesnt exist`);
-      throw new Error("Transport doesn't exist");
+      throw new Error(`Transport ${transportId} doesn't exist`);
     }
 
     const producer = await this._transports.get(transportId)!.produce({
@@ -73,7 +77,7 @@ export class MsPeer {
     consumerTransportId,
     rtpCapabilities,
   }: ConsumeParams): Promise<Consumer> {
-    if (this._transports.has(consumerTransportId)) {
+    if (!this._transports.has(consumerTransportId)) {
       console.log(
         `--- [CreateConsumer] transport ${consumerTransportId} doesnt exist`
       );
@@ -86,7 +90,7 @@ export class MsPeer {
         .consume({
           producerId,
           rtpCapabilities,
-          paused: true,
+          paused: false,
         });
 
       if (consumer.type === 'simulcast') {

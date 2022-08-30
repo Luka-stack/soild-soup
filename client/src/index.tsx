@@ -4,13 +4,22 @@ import { render } from 'solid-js/web';
 import './index.css';
 import App from './App';
 import { WebSocket } from './lib/socket/socket';
-import { ServerHandler } from './lib/server';
+import { ServerAPI } from './lib/server';
+import { SignalingAPI } from './lib/mediasoup';
+import { Router } from '@solidjs/router';
 
 WebSocket.createSocket();
-let serverHandler;
 
 if (WebSocket.socket()) {
-  serverHandler = new ServerHandler(WebSocket.socket()!);
+  ServerAPI.connect(WebSocket.socket()!);
+  SignalingAPI.connect(WebSocket.socket()!);
 }
 
-render(() => <App />, document.getElementById('root') as HTMLElement);
+render(
+  () => (
+    <Router>
+      <App />
+    </Router>
+  ),
+  document.getElementById('root') as HTMLElement
+);

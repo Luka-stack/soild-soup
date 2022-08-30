@@ -1,12 +1,23 @@
+import { useNavigate } from '@solidjs/router';
 import { Component, createSignal, For, Match, Switch } from 'solid-js';
-import { rooms, setSelectedRoom, selectedRoom } from '../state';
+import { SignalingAPI } from '../lib/mediasoup';
+import { rooms, username } from '../state';
 
 export const Rooms: Component = () => {
+  const navigate = useNavigate();
+
+  const [selectedRoom, setSelectedRoom] = createSignal<string | null>(null);
   const [createRoom, setCreateRoom] = createSignal(true);
 
   let inputRef: HTMLInputElement | undefined;
 
-  const onConnect = () => {};
+  const onConnect = () => {
+    if (inputRef?.value && username()) {
+      SignalingAPI.joinRoom(username()!, inputRef.value);
+
+      navigate(`/rooms/${inputRef.value}`);
+    }
+  };
 
   return (
     <div class="pb-4 w-72 flex flex-col items-center">

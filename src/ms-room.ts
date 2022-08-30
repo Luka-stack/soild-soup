@@ -13,18 +13,21 @@ import {
   ProduceParams,
   TransportParams,
 } from './types';
+import { Server } from 'socket.io';
 
 export class MsRoom {
   private _peers: Map<string, MsPeer>;
-  private _router!: Router;
+  private _router: Router | null;
 
-  constructor(public readonly name: string) {
+  constructor(public readonly name: string, private readonly server: Server) {
+    this._router = null;
     this._peers = new Map();
-    this.initRouter();
   }
 
   addPeer(peer: MsPeer): void {
     this._peers.set(peer.id, peer);
+
+    console.log('--- [MsRoom]:addPeer usser', peer.name, 'added ---');
   }
 
   async createWebRtcTransport(peerId: string): Promise<TransportParams> {
@@ -38,7 +41,7 @@ export class MsRoom {
     const { maxIncomingBitrate, initialAvailableOutgoingBitrate, listenIps } =
       config.mediasoup.webRtcTransport;
 
-    const transport = await this._router.createWebRtcTransport({
+    const transport = await this._router!.createWebRtcTransport({
       listenIps,
       enableUdp: true,
       enableTcp: true,
@@ -76,7 +79,7 @@ export class MsRoom {
 
   async connectTransport(
     peerId: string,
-    params: { id: string; dtls: DtlsParameters }
+    params: { transportId: string; dtlsParameters: DtlsParameters }
   ): Promise<void> {
     const peer = this._peers.get(peerId);
 
@@ -100,8 +103,11 @@ export class MsRoom {
       throw new Error('Peer not found');
     }
 
-    const producer = await this._peers.get(peerId)!.createProducer(params);
-    // Broadcast producer to everyone but me [peerId]
+    const producer = await peer.createProducer(params);
+
+    console.log(
+      `--- [MsRoom]:produce; created producer ${producer.id} for ${peerId} ---`
+    );
 
     return producer.id;
   }
@@ -118,7 +124,7 @@ export class MsRoom {
     }
 
     if (
-      !this._router.canConsume({
+      !this._router!.canConsume({
         producerId: params.producerId,
         rtpCapabilities: params.rtpCapabilities,
       })
@@ -130,6 +136,8 @@ export class MsRoom {
     const consumer = await this._peers.get(peerId)!.createConsumer(params);
 
     consumer.on('producerclose', () => {
+      console.log('--- [Consumer] producer closed ---');
+
       peer.removeConsumer(consumer.id);
       // emit to the consumer
     });
@@ -143,11 +151,24 @@ export class MsRoom {
     };
   }
 
-  getRouterCapabilities(): RtpCapabilities {
-    return this._router.rtpCapabilities;
+  async getRouterCapabilities(): Promise<RtpCapabilities> {
+    if (!this._router) {
+      await this.initRouter();
+    }
+
+    return this._router!.rtpCapabilities;
   }
 
   private async initRouter() {
     this._router = await createRouter();
+    console.log('--- [MsRoom]:initRouter router initialized ---');
+  }
+
+  broadcast(id: string, type: string, data: any) {
+    for (let peer of this._peers.values()) {
+      if (peer.id === id) continue;
+
+      this.server.to(peer.id).emit(type, data);
+    }
   }
 }

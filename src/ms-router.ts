@@ -1,4 +1,4 @@
-import mediasoup from 'mediasoup';
+import * as mediasoup from 'mediasoup';
 import type { Worker } from 'mediasoup/node/lib/types';
 import { config } from './mediasoup-config';
 
