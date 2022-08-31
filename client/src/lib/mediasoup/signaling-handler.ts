@@ -8,12 +8,18 @@ import type {
   Transport,
 } from 'mediasoup-client/lib/types';
 import { socketPromise } from '../socket/socket-promise';
-import { setConsumerAudio } from '../../state';
+import { participants, setParticipants } from '../../state';
 
 interface ConsumerProps {
   kind: MediaKind;
   stream: MediaStream;
   consumer: Consumer;
+}
+
+interface ParticipantsProducers {
+  uuid: string;
+  name: string;
+  producers: string[];
 }
 
 export class SignalingHandler {
@@ -22,22 +28,45 @@ export class SignalingHandler {
   private _consumerTransport: Transport | null = null;
   private _consumers: Map<string, Consumer> = new Map();
   private _producers: Map<string, Producer> = new Map();
+  private _inputStream!: MediaStream;
 
   constructor(private readonly socket: Socket) {
     this.initListeners();
+    this.getMediaStream();
   }
 
   join(username: string, roomName: string): void {
     this.socket.emit('join', username, roomName);
   }
 
-  async onJoin(rtpParams: RtpCapabilities): Promise<void> {
+  pauseProducer(producerType: string): void {
+    const producer = this._producers.get(producerType);
+
+    if (!producer) {
+      return;
+    }
+
+    producer.pause();
+    this.socket.emit('producer_paused', producer.id);
+  }
+
+  resumeProducer(producerType: string): void {
+    if (!this._producers.has(producerType)) {
+      return;
+    }
+
+    this._producers.get(producerType)!.resume();
+  }
+
+  private async onJoin(rtpParams: RtpCapabilities): Promise<void> {
     await this.createDevice(rtpParams);
     await this.createProducerTransport();
     await this.createConsumerTransport();
+
+    this.socket.emit('get_producers');
   }
 
-  onNewProducers(producers: string[]): void {
+  private onNewProducers(producers: ParticipantsProducers[]): void {
     console.log(
       '--- [Signaling Handler] recived new producers',
       producers,
@@ -47,10 +76,18 @@ export class SignalingHandler {
     producers.forEach((p) => this.consume(p));
   }
 
-  async createDevice(routerRtpCapabilities: RtpCapabilities) {
+  private async createDevice(routerRtpCapabilities: RtpCapabilities) {
     try {
       this._device = new Device();
       await this._device.load({ routerRtpCapabilities });
+
+      this._device.observer.on('newtransport', (transport) => {
+        transport.observer.on('newconsumer', (consumer: any) => {
+          consumer.observer.on('pause', () => {
+            console.log('consumer closed');
+          });
+        });
+      });
 
       console.log('--- [Create Device] device created ---');
     } catch (error: any) {
@@ -60,7 +97,7 @@ export class SignalingHandler {
     }
   }
 
-  async createProducerTransport(): Promise<void> {
+  private async createProducerTransport(): Promise<void> {
     const params = await socketPromise(this.socket)('create_webrtc_transport');
 
     this._producerTransport = this._device!.createSendTransport(params);
@@ -121,9 +158,11 @@ export class SignalingHandler {
       this._producerTransport.id,
       'created ---'
     );
+
+    this.produce('audio', this._inputStream);
   }
 
-  async createConsumerTransport(): Promise<void> {
+  private async createConsumerTransport(): Promise<void> {
     const params = await socketPromise(this.socket)('create_webrtc_transport');
 
     this._consumerTransport = this._device!.createRecvTransport(params);
@@ -166,29 +205,49 @@ export class SignalingHandler {
     );
   }
 
-  async consume(producerId: string): Promise<void> {
-    const { consumer, stream, kind } = await this.createConsumer(producerId);
+  private async consume(
+    paritipantsProds: ParticipantsProducers
+  ): Promise<void> {
+    const participant: any = {
+      uuid: paritipantsProds.uuid,
+      name: paritipantsProds.name,
+      audio: null,
+    };
 
-    if (kind === 'audio') {
-      setConsumerAudio(stream);
-    } else {
-      // TODO update video
+    for (let producer of paritipantsProds.producers) {
+      const { consumer, stream, kind } = await this.createConsumer(producer);
+
+      if (kind === 'audio') {
+        participant.audio = stream;
+      } else {
+        // TODO update video
+      }
+
+      consumer.on('trackended', () => {
+        // TODO remove consumer
+        console.log(`--- [Consumer ${kind}] trackended`);
+      });
+
+      consumer.on('transportclose', () => {
+        // TODO remove consumer
+        console.log(`--- [Consumer ${kind}] transportclose`);
+      });
+
+      consumer.observer.on('pause', function () {
+        console.log(`Participant ${participant.name} paused`);
+      });
+
+      consumer.observer.on('resume', function () {
+        console.log(`Participant ${participant.name} resume`);
+      });
+
+      this._consumers.set(consumer.id, consumer);
     }
 
-    consumer.on('trackended', () => {
-      // TODO remove consumer
-      console.log(`--- [Consumer ${kind}] trackended`);
-    });
-
-    consumer.on('transportclose', () => {
-      // TODO remove consumer
-      console.log(`--- [Consumer ${kind}] transportclose`);
-    });
-
-    this._consumers.set(consumer.id, consumer);
+    setParticipants([...participants, participant]);
   }
 
-  async createConsumer(producerId: string): Promise<ConsumerProps> {
+  private async createConsumer(producerId: string): Promise<ConsumerProps> {
     const { consumerId, kind, rtpParameters } = await socketPromise(
       this.socket
     )('consume', {
@@ -213,7 +272,7 @@ export class SignalingHandler {
     };
   }
 
-  async produce(kind: string, source: MediaStream): Promise<void> {
+  private async produce(kind: string, source: MediaStream): Promise<void> {
     if (this._producers.has(kind)) {
       console.log(`--- [Produce] Producer already exists for kind: ${kind}`);
       return;
@@ -235,9 +294,11 @@ export class SignalingHandler {
       // TODO remove producer
       console.log(`--- [Producer ${kind}] trackended`);
     });
+
+    this._producers.set(kind, producer);
   }
 
-  async createProducer(
+  private async createProducer(
     kind: string,
     source: MediaStream
   ): Promise<Producer | undefined> {
@@ -290,15 +351,43 @@ export class SignalingHandler {
     return producer;
   }
 
-  initListeners() {
+  private onParticipantMutation() {
+    console.log('Participant muted');
+    setParticipants(
+      (participant) => participant.name === 'Taka',
+      'muted',
+      () => true
+    );
+  }
+
+  private initListeners() {
     this.socket.on('joined_room', (params: RtpCapabilities) => {
       console.log('--- [Event: joined_room] ---', params);
 
       this.onJoin(params);
     });
 
-    this.socket.on('new_producers', (prducers: string[]) => {
-      this.onNewProducers(prducers);
+    this.socket.on(
+      'new_producers',
+      (participantsProds: ParticipantsProducers[]) => {
+        this.onNewProducers(participantsProds);
+      }
+    );
+
+    this.socket.on('participant_mutation', () => {
+      this.onParticipantMutation();
     });
+  }
+
+  private getMediaStream() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+      console.log('Media Device is not available');
+      return;
+    }
+
+    navigator.mediaDevices
+      .getUserMedia({ audio: true, video: false })
+      .then((stream) => (this._inputStream = stream))
+      .catch((error) => console.log('--- [Room]:produceAudio ', error, '---'));
   }
 }

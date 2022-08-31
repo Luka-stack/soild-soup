@@ -21,11 +21,19 @@ export namespace SignalingAPI {
     _signalingHandler.join(username, roomName);
   }
 
-  export function produceAudio(stream: MediaStream): void {
+  export function pauseProducer(producerType: string) {
     if (!_signalingHandler) {
       return;
     }
 
-    _signalingHandler.produce('audio', stream);
+    _signalingHandler.pauseProducer(producerType);
   }
+
+  // export function produceAudio(stream: MediaStream): void {
+  //   if (!_signalingHandler) {
+  //     return;
+  //   }
+
+  //   _signalingHandler.produce('audio', stream);
+  // }
 }

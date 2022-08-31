@@ -122,11 +122,7 @@ export class MsServer {
 
     callback(producerId);
 
-    // setTimeout(() => {
-    this._msRooms
-      .get(roomName)!
-      .broadcast(socket.id, 'new_producers', [producerId]);
-    // }, 5000);
+    this._msRooms.get(roomName)!.broadcastProducer(socket.id, producerId);
   }
 
   async onConsume(
@@ -149,6 +145,26 @@ export class MsServer {
       console.log('--- [onConsume] error ---', error);
       // TODO send error
     }
+  }
+
+  onGetProducers(socket: Socket): void {
+    const roomName = socket.data.roomName;
+    if (!this._msRooms.has(roomName)) {
+      console.log(`--- [onGetProducers] room ${roomName} doesnt exist ---`);
+      return;
+    }
+
+    this._msRooms.get(roomName)!.sendProducers(socket.id);
+  }
+
+  onProducerPaused(socket: Socket, producerId: string): void {
+    const roomName = socket.data.roomName;
+    if (!this._msRooms.has(roomName)) {
+      console.log(`--- [onProducerPaused] room ${roomName} doesnt exist ---`);
+      return;
+    }
+
+    this._msRooms.get(roomName)!.pauseProducer(socket.id, producerId);
   }
 
   initListeners() {
@@ -179,6 +195,14 @@ export class MsServer {
 
       socket.on('consume', (params, callback) => {
         this.onConsume(socket, params, callback);
+      });
+
+      socket.on('get_producers', () => {
+        this.onGetProducers(socket);
+      });
+
+      socket.on('producer_paused', (producerId) => {
+        this.onProducerPaused(socket, producerId);
       });
 
       // ----------------------------

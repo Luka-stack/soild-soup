@@ -142,6 +142,11 @@ export class MsRoom {
       // emit to the consumer
     });
 
+    consumer.on('producerpause', () => {
+      console.log('--- [Consumer] producer paused ---');
+      this.server.to(peer.id).emit('participant_mutation');
+    });
+
     return {
       consumerId: consumer.id,
       producerId: params.producerId,
@@ -170,5 +175,38 @@ export class MsRoom {
 
       this.server.to(peer.id).emit(type, data);
     }
+  }
+
+  broadcastProducer(id: string, producerId: string) {
+    const peer = this._peers.get(id);
+
+    if (!peer) return;
+
+    const message = {
+      uuid: peer.uuid,
+      name: peer.name,
+      producers: [producerId],
+    };
+
+    this.broadcast(id, 'new_producers', [message]);
+  }
+
+  sendProducers(id: string) {
+    const producerList = [];
+
+    for (let peer of this._peers.values()) {
+      if (peer.id === id) continue;
+      producerList.push({
+        uuid: peer.uuid,
+        name: peer.name,
+        producers: peer.getProducers(),
+      });
+    }
+
+    this.server.to(id).emit('new_producers', producerList);
+  }
+
+  pauseProducer(id: string, producerId: string) {
+    this._peers.get(id)?.pauseProducer(producerId);
   }
 }

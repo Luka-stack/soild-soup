@@ -7,11 +7,13 @@ import type {
 import { ConsumeParams, ProduceParams } from './types';
 
 export class MsPeer {
+  public readonly uuid: string;
   private _transports: Map<string, Transport>;
   private _producers: Map<string, Producer>;
   private _consumers: Map<string, Consumer>;
 
   constructor(public readonly id: string, public readonly name: string) {
+    this.uuid = '';
     this._transports = new Map();
     this._producers = new Map();
     this._consumers = new Map();
@@ -59,6 +61,9 @@ export class MsPeer {
     const producer = await this._transports.get(transportId)!.produce({
       kind,
       rtpParameters,
+      appData: {
+        peerUuid: 'qwerty',
+      },
     });
 
     producer.on('transportclose', () => {
@@ -117,5 +122,18 @@ export class MsPeer {
 
   removeConsumer(consumerId: string): void {
     this._consumers.delete(consumerId);
+  }
+
+  getProducers(): string[] {
+    const producers: string[] = [];
+    for (let producer of this._producers.values()) {
+      producers.push(producer.id);
+    }
+
+    return producers;
+  }
+
+  pauseProducer(producerId: string): void {
+    this._producers.get(producerId)?.pause();
   }
 }
