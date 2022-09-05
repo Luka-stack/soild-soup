@@ -8,7 +8,7 @@ import type {
   Transport,
 } from 'mediasoup-client/lib/types';
 import { socketPromise } from '../socket/socket-promise';
-import { participants, setParticipants } from '../../state';
+import { participants, setAmIMuted, setParticipants } from '../../state';
 
 interface ConsumerProps {
   kind: MediaKind;
@@ -39,15 +39,23 @@ export class SignalingHandler {
     this.socket.emit('join', username, roomName);
   }
 
-  pauseProducer(producerType: string): void {
-    const producer = this._producers.get(producerType);
+  changeMutation(): void {
+    const producer = this._producers.get('audio');
 
     if (!producer) {
       return;
     }
 
-    producer.pause();
-    this.socket.emit('producer_paused', producer.id);
+    const producerPaused = !producer.paused;
+    setAmIMuted(producerPaused);
+
+    if (producer.paused) {
+      producer.resume();
+    } else {
+      producer.pause();
+    }
+
+    this.socket.emit('producer_paused', producer.id, producerPaused);
   }
 
   resumeProducer(producerType: string): void {
@@ -233,12 +241,8 @@ export class SignalingHandler {
         console.log(`--- [Consumer ${kind}] transportclose`);
       });
 
-      consumer.observer.on('pause', function () {
-        console.log(`Participant ${participant.name} paused`);
-      });
-
-      consumer.observer.on('resume', function () {
-        console.log(`Participant ${participant.name} resume`);
+      consumer.observer.on('close', () => {
+        console.log('---- consumer observer closed');
       });
 
       this._consumers.set(consumer.id, consumer);
@@ -351,12 +355,12 @@ export class SignalingHandler {
     return producer;
   }
 
-  private onParticipantMutation() {
-    console.log('Participant muted');
+  private onParticipantMutation(status: { uuid: string; paused: boolean }) {
+    console.log('Participant muted', status.uuid);
     setParticipants(
-      (participant) => participant.name === 'Taka',
+      (participant) => participant.uuid === status.uuid,
       'muted',
-      () => true
+      () => status.paused
     );
   }
 
@@ -374,8 +378,8 @@ export class SignalingHandler {
       }
     );
 
-    this.socket.on('participant_mutation', () => {
-      this.onParticipantMutation();
+    this.socket.on('participant_mutation', (status) => {
+      this.onParticipantMutation(status);
     });
   }
 

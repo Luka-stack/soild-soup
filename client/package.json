@@ -20,6 +20,7 @@
   "dependencies": {
     "mediasoup-client": "^3.6.56",
     "socket.io-client": "^4.5.1",
+    "solid-heroicons": "^3.0.1",
     "solid-js": "^1.4.7"
   }
 }

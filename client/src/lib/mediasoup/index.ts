@@ -21,12 +21,12 @@ export namespace SignalingAPI {
     _signalingHandler.join(username, roomName);
   }
 
-  export function pauseProducer(producerType: string) {
+  export function changeMutation() {
     if (!_signalingHandler) {
       return;
     }
 
-    _signalingHandler.pauseProducer(producerType);
+    _signalingHandler.changeMutation();
   }
 
   // export function produceAudio(stream: MediaStream): void {

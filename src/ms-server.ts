@@ -157,14 +157,30 @@ export class MsServer {
     this._msRooms.get(roomName)!.sendProducers(socket.id);
   }
 
-  onProducerPaused(socket: Socket, producerId: string): void {
+  onProducerPaused(socket: Socket, producerId: string, paused: boolean): void {
     const roomName = socket.data.roomName;
     if (!this._msRooms.has(roomName)) {
       console.log(`--- [onProducerPaused] room ${roomName} doesnt exist ---`);
       return;
     }
 
-    this._msRooms.get(roomName)!.pauseProducer(socket.id, producerId);
+    this._msRooms.get(roomName)!.pauseProducer(socket.id, producerId, paused);
+  }
+
+  onDisconnect(socket: Socket): void {
+    const roomName = socket.data.roomName;
+    if (!this._msRooms.has(roomName)) {
+      console.log(`--- [onGetProducers] room ${roomName} doesnt exist ---`);
+      return;
+    }
+
+    // Remove peer
+    this._msRooms.get(roomName)!.removePeer(socket.id);
+
+    // If room is empty, close it
+    if (!this._msRooms.size) {
+      this._msRooms.delete(roomName);
+    }
   }
 
   initListeners() {
@@ -201,14 +217,16 @@ export class MsServer {
         this.onGetProducers(socket);
       });
 
-      socket.on('producer_paused', (producerId) => {
-        this.onProducerPaused(socket, producerId);
+      socket.on('producer_paused', (producerId, paused) => {
+        this.onProducerPaused(socket, producerId, paused);
       });
 
       // ----------------------------
 
       socket.on('disconnect', () => {
         console.log(`--- Socket ${socket.id} disconnected from server ---`);
+
+        this.onDisconnect(socket);
       });
     });
   }

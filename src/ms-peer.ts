@@ -4,6 +4,8 @@ import type {
   Producer,
   Transport,
 } from 'mediasoup/node/lib/types';
+import { v4 as uuidv4 } from 'uuid';
+
 import { ConsumeParams, ProduceParams } from './types';
 
 export class MsPeer {
@@ -13,7 +15,7 @@ export class MsPeer {
   private _consumers: Map<string, Consumer>;
 
   constructor(public readonly id: string, public readonly name: string) {
-    this.uuid = '';
+    this.uuid = uuidv4();
     this._transports = new Map();
     this._producers = new Map();
     this._consumers = new Map();
@@ -135,5 +137,13 @@ export class MsPeer {
 
   pauseProducer(producerId: string): void {
     this._producers.get(producerId)?.pause();
+  }
+
+  resumeProducer(producerId: string): void {
+    this._producers.get(producerId)?.resume();
+  }
+
+  close(): void {
+    this._transports.forEach((transport) => transport.close());
   }
 }

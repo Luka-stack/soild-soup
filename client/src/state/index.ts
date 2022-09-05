@@ -8,11 +8,9 @@ export interface Participant {
   muted: boolean;
 }
 
+export const [amIMuted, setAmIMuted] = createSignal<boolean>(false);
 export const [username, setUsername] = createSignal<string | null>(null);
 export const [rooms, setRooms] = createSignal<string[]>([]);
-export const [consumerAudios, setConsumerAudios] = createSignal<MediaStream[]>(
-  []
-);
 
 export const [participants, setParticipants] = createStore<Participant[]>([]);
 

@@ -30,6 +30,18 @@ export class MsRoom {
     console.log('--- [MsRoom]:addPeer usser', peer.name, 'added ---');
   }
 
+  removePeer(peerId: string): void {
+    const peer = this._peers.get(peerId);
+
+    if (!peer) {
+      console.log(`--- [RemovePeer] peer ${peerId} not found ---`);
+      throw new Error('Peer not found');
+    }
+
+    peer.close();
+    this._peers.delete(peer.id);
+  }
+
   async createWebRtcTransport(peerId: string): Promise<TransportParams> {
     const peer = this._peers.get(peerId);
 
@@ -142,10 +154,10 @@ export class MsRoom {
       // emit to the consumer
     });
 
-    consumer.on('producerpause', () => {
-      console.log('--- [Consumer] producer paused ---');
-      this.server.to(peer.id).emit('participant_mutation');
-    });
+    // consumer.on('producerpause', () => {
+    //   console.log('--- [Consumer] producer paused ---');
+    //   this.server.to(peer.id).emit('participant_mutation');
+    // });
 
     return {
       consumerId: consumer.id,
@@ -206,7 +218,19 @@ export class MsRoom {
     this.server.to(id).emit('new_producers', producerList);
   }
 
-  pauseProducer(id: string, producerId: string) {
-    this._peers.get(id)?.pauseProducer(producerId);
+  pauseProducer(id: string, producerId: string, paused: boolean) {
+    const peer = this._peers.get(id);
+
+    if (!peer) return;
+
+    console.log('--- [Consumer] producer paused', paused, '---');
+
+    if (paused) {
+      peer.pauseProducer(producerId);
+    } else {
+      peer.resumeProducer(producerId);
+    }
+
+    this.broadcast(id, 'participant_mutation', { uuid: peer.uuid, paused });
   }
 }
