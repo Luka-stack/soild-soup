@@ -25,15 +25,6 @@ export class MsServer {
     this.initListeners();
   }
 
-  getRooms(): string[] {
-    const rooms = [];
-    for (const room of this._msRooms.values()) {
-      rooms.push(room.name);
-    }
-
-    return ['Room 1', 'Room 2', 'Room 3', 'Room 4', 'Room 5'];
-  }
-
   async joinRoom(
     socket: Socket,
     nickname: string,
@@ -45,6 +36,8 @@ export class MsServer {
       msRoom = new MsRoom(roomName, this._server);
       this._msRooms.set(roomName, msRoom);
       console.log('--- [MsServer]:JoinRoom created new room ', roomName, '---');
+
+      this.broadcastRooms();
     }
 
     const peer = new MsPeer(socket.id, nickname);
@@ -54,6 +47,20 @@ export class MsServer {
     const routerParams = await msRoom.getRouterCapabilities();
 
     socket.emit('joined_room', routerParams);
+  }
+
+  broadcastRooms(socket?: Socket) {
+    const rooms: string[] = [];
+
+    for (const room of this._msRooms.values()) {
+      rooms.push(room.name);
+    }
+
+    if (socket) {
+      socket.emit('rooms', rooms);
+    } else {
+      this._server.emit('rooms', rooms);
+    }
   }
 
   async onCreateWebRtcTransport(
@@ -174,10 +181,8 @@ export class MsServer {
       return;
     }
 
-    // Remove peer
     this._msRooms.get(roomName)!.removePeer(socket.id);
 
-    // If room is empty, close it
     if (!this._msRooms.size) {
       this._msRooms.delete(roomName);
     }
@@ -188,7 +193,7 @@ export class MsServer {
       socket.on('startSession', () => {
         console.log(`--- Socket ${socket.id} connected to server ---`);
 
-        socket.emit('rooms', this.getRooms());
+        this.broadcastRooms(socket);
       });
 
       socket.on('join', (nickname, roomName) => {
@@ -219,6 +224,10 @@ export class MsServer {
 
       socket.on('producer_paused', (producerId, paused) => {
         this.onProducerPaused(socket, producerId, paused);
+      });
+
+      socket.on('exit_room', () => {
+        this.onDisconnect(socket);
       });
 
       // ----------------------------

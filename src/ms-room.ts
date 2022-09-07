@@ -40,6 +40,7 @@ export class MsRoom {
 
     peer.close();
     this._peers.delete(peer.id);
+    this.broadcast('', 'participant_left', peer.uuid);
   }
 
   async createWebRtcTransport(peerId: string): Promise<TransportParams> {

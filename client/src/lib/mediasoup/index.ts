@@ -29,6 +29,15 @@ export namespace SignalingAPI {
     _signalingHandler.changeMutation();
   }
 
+  export function exitRoom() {
+    if (!_signalingHandler) {
+      return;
+    }
+
+    _signalingHandler.disconnect();
+    _signalingHandler = null;
+  }
+
   // export function produceAudio(stream: MediaStream): void {
   //   if (!_signalingHandler) {
   //     return;

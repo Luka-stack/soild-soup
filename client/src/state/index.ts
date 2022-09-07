@@ -8,15 +8,11 @@ export interface Participant {
   muted: boolean;
 }
 
+// These three should be combined
 export const [amIMuted, setAmIMuted] = createSignal<boolean>(false);
 export const [username, setUsername] = createSignal<string | null>(null);
+export const [authRoom, setAuthRoom] = createSignal<string | null>(null);
+
 export const [rooms, setRooms] = createSignal<string[]>([]);
 
 export const [participants, setParticipants] = createStore<Participant[]>([]);
-
-// export const participantsState = createMutable({
-//   participants: [] as Participant[],
-//   addParticipant(participant: Participant) {
-//     this.participants.push(participant);
-//   },
-// });

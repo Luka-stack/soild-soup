@@ -8,7 +8,13 @@ import type {
   Transport,
 } from 'mediasoup-client/lib/types';
 import { socketPromise } from '../socket/socket-promise';
-import { participants, setAmIMuted, setParticipants } from '../../state';
+import {
+  participants,
+  setAmIMuted,
+  setAuthRoom,
+  setParticipants,
+} from '../../state';
+import { batch } from 'solid-js';
 
 interface ConsumerProps {
   kind: MediaKind;
@@ -64,6 +70,20 @@ export class SignalingHandler {
     }
 
     this._producers.get(producerType)!.resume();
+  }
+
+  disconnect(): void {
+    batch(() => {
+      setParticipants([]);
+      setAmIMuted(false);
+      setAuthRoom(null);
+    });
+
+    this.socket.emit('exit_room');
+
+    this._consumerTransport?.close();
+    this._producerTransport?.close();
+    this.cleanListeners();
   }
 
   private async onJoin(rtpParams: RtpCapabilities): Promise<void> {
@@ -355,13 +375,25 @@ export class SignalingHandler {
     return producer;
   }
 
-  private onParticipantMutation(status: { uuid: string; paused: boolean }) {
-    console.log('Participant muted', status.uuid);
+  private onParticipantMutation(status: {
+    uuid: string;
+    paused: boolean;
+  }): void {
     setParticipants(
       (participant) => participant.uuid === status.uuid,
       'muted',
       () => status.paused
     );
+  }
+
+  private onParticipantLeft(participantId: string): void {
+    setParticipants(participants.filter((p) => p.uuid !== participantId));
+  }
+
+  private cleanListeners(): void {
+    this.socket.off('joined_room');
+    this.socket.off('new_producers');
+    this.socket.off('participant_mutation');
   }
 
   private initListeners() {
@@ -380,6 +412,10 @@ export class SignalingHandler {
 
     this.socket.on('participant_mutation', (status) => {
       this.onParticipantMutation(status);
+    });
+
+    this.socket.on('participant_left', (participantId) => {
+      this.onParticipantLeft(participantId);
     });
   }
 
