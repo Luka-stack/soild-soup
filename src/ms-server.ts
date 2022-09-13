@@ -8,6 +8,7 @@ import {
   ProduceParams,
   TransportParams,
 } from './types';
+import { MediaKind } from 'mediasoup/node/lib/RtpParameters';
 
 export class MsServer {
   private _server: Server;
@@ -174,6 +175,16 @@ export class MsServer {
     this._msRooms.get(roomName)!.pauseProducer(socket.id, producerId, paused);
   }
 
+  onProducerClosed(socket: Socket, kind: MediaKind): void {
+    const roomName = socket.data.roomName;
+    if (!this._msRooms.has(roomName)) {
+      console.log(`--- [onProducerPaused] room ${roomName} doesnt exist ---`);
+      return;
+    }
+
+    this._msRooms.get(roomName)!.closeProducer(socket.id, kind);
+  }
+
   onDisconnect(socket: Socket): void {
     const roomName = socket.data.roomName;
     if (!this._msRooms.has(roomName)) {
@@ -224,6 +235,10 @@ export class MsServer {
 
       socket.on('producer_paused', (producerId, paused) => {
         this.onProducerPaused(socket, producerId, paused);
+      });
+
+      socket.on('producer_closed', (kind) => {
+        this.onProducerClosed(socket, kind);
       });
 
       socket.on('exit_room', () => {

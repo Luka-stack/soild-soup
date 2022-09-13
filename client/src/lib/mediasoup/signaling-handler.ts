@@ -11,8 +11,10 @@ import { socketPromise } from '../socket/socket-promise';
 import {
   participants,
   setAmIMuted,
+  setAmIStreaming,
   setAuthRoom,
   setParticipants,
+  updateParticipants,
 } from '../../state';
 import { batch } from 'solid-js';
 
@@ -23,9 +25,15 @@ interface ConsumerProps {
 }
 
 interface ParticipantsProducers {
-  uuid: string;
+  peerId: string;
   name: string;
   producers: string[];
+}
+
+interface ClosedStatus {
+  peerId: string;
+  consumerId: string;
+  kind: MediaKind;
 }
 
 export class SignalingHandler {
@@ -34,11 +42,9 @@ export class SignalingHandler {
   private _consumerTransport: Transport | null = null;
   private _consumers: Map<string, Consumer> = new Map();
   private _producers: Map<string, Producer> = new Map();
-  private _inputStream!: MediaStream;
 
   constructor(private readonly socket: Socket) {
     this.initListeners();
-    this.getMediaStream();
   }
 
   join(username: string, roomName: string): void {
@@ -62,6 +68,22 @@ export class SignalingHandler {
     }
 
     this.socket.emit('producer_paused', producer.id, producerPaused);
+  }
+
+  async toggleStreaming(): Promise<void> {
+    const producer = this._producers.get('video');
+
+    if (producer) {
+      producer.close();
+      this.socket.emit('producer_closed', 'video');
+      setAmIStreaming(false);
+      return;
+    }
+
+    // Start streaming / start video producer
+    const video = await this.getMediaStream('video');
+    this.produce('video', video);
+    setAmIStreaming(true);
   }
 
   resumeProducer(producerType: string): void {
@@ -187,7 +209,8 @@ export class SignalingHandler {
       'created ---'
     );
 
-    this.produce('audio', this._inputStream);
+    const stream = await this.getMediaStream('audio');
+    this.produce('audio', stream);
   }
 
   private async createConsumerTransport(): Promise<void> {
@@ -237,18 +260,20 @@ export class SignalingHandler {
     paritipantsProds: ParticipantsProducers
   ): Promise<void> {
     const participant: any = {
-      uuid: paritipantsProds.uuid,
+      uuid: paritipantsProds.peerId,
       name: paritipantsProds.name,
-      audio: null,
     };
 
     for (let producer of paritipantsProds.producers) {
-      const { consumer, stream, kind } = await this.createConsumer(producer);
+      const { consumer, stream, kind } = await this.createConsumer(
+        producer,
+        paritipantsProds.peerId
+      );
 
       if (kind === 'audio') {
         participant.audio = stream;
       } else {
-        // TODO update video
+        participant.video = stream;
       }
 
       consumer.on('trackended', () => {
@@ -262,22 +287,28 @@ export class SignalingHandler {
       });
 
       consumer.observer.on('close', () => {
-        console.log('---- consumer observer closed');
+        console.log('--- consumer observer closed ---');
       });
 
       this._consumers.set(consumer.id, consumer);
     }
 
-    setParticipants([...participants, participant]);
+    updateParticipants(participant);
   }
 
-  private async createConsumer(producerId: string): Promise<ConsumerProps> {
+  private async createConsumer(
+    producerId: string,
+    participantId: string
+  ): Promise<ConsumerProps> {
     const { consumerId, kind, rtpParameters } = await socketPromise(
       this.socket
     )('consume', {
       producerId,
       consumerTransportId: this._consumerTransport!.id,
       rtpCapabilities: this._device!.rtpCapabilities,
+      appData: {
+        peerId: participantId,
+      },
     });
 
     const consumer = await this._consumerTransport!.consume({
@@ -359,14 +390,12 @@ export class SignalingHandler {
         params = {
           track,
           appData,
-          encodings: {},
-          codecOptions: {},
         };
 
         break;
 
       default:
-        console.log(`--- [CreateProducer] Unknown kind: ${kind}`);
+        console.log(`--- [CreateProducer] Unknown kind: ${kind} ---`);
         break;
     }
 
@@ -376,23 +405,35 @@ export class SignalingHandler {
   }
 
   private onParticipantMutation(status: {
-    uuid: string;
+    peerId: string;
     paused: boolean;
   }): void {
     setParticipants(
-      (participant) => participant.uuid === status.uuid,
+      (participant) => participant.uuid === status.peerId,
       'muted',
       () => status.paused
     );
   }
 
-  private onParticipantLeft(participantId: string): void {
-    setParticipants(participants.filter((p) => p.uuid !== participantId));
+  private onParticipantLeft(peerId: string): void {
+    setParticipants(participants.filter((p) => p.uuid !== peerId));
+  }
+
+  private onProducerClosed({ peerId, kind, consumerId }: ClosedStatus): void {
+    this._consumers.get(consumerId)?.close();
+    this._consumers.delete(consumerId);
+
+    setParticipants(
+      (participant) => participant.uuid === peerId,
+      kind,
+      () => undefined
+    );
   }
 
   private cleanListeners(): void {
     this.socket.off('joined_room');
     this.socket.off('new_producers');
+    this.socket.off('producer_closed');
     this.socket.off('participant_mutation');
   }
 
@@ -414,20 +455,30 @@ export class SignalingHandler {
       this.onParticipantMutation(status);
     });
 
-    this.socket.on('participant_left', (participantId) => {
-      this.onParticipantLeft(participantId);
+    this.socket.on('participant_left', (peerId) => {
+      this.onParticipantLeft(peerId);
+    });
+
+    this.socket.on('producer_closed', (status) => {
+      this.onProducerClosed(status);
     });
   }
 
-  private getMediaStream() {
+  private async getMediaStream(kind: 'video' | 'audio') {
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-      console.log('Media Device is not available');
-      return;
+      throw new Error('--- [GetMediaStream] Media Device is not available ---');
     }
 
-    navigator.mediaDevices
-      .getUserMedia({ audio: true, video: false })
-      .then((stream) => (this._inputStream = stream))
-      .catch((error) => console.log('--- [Room]:produceAudio ', error, '---'));
+    const constraints = {
+      audio: kind === 'audio',
+      video: kind === 'video',
+    };
+
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (error: any) {
+      console.log(error);
+      throw new Error('--- [GetMediaStream Error] ---');
+    }
   }
 }

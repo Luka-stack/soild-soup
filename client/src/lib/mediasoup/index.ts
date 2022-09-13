@@ -38,6 +38,14 @@ export namespace SignalingAPI {
     _signalingHandler = null;
   }
 
+  export function toggleStreaming() {
+    if (!_signalingHandler) {
+      return;
+    }
+
+    _signalingHandler.toggleStreaming();
+  }
+
   // export function produceAudio(stream: MediaStream): void {
   //   if (!_signalingHandler) {
   //     return;

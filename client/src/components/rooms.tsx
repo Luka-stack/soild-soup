@@ -11,12 +11,6 @@ export const Rooms: Component = () => {
 
   let inputRef: HTMLInputElement | undefined;
 
-  const updateInput = (event: KeyboardEvent) => {
-    setSelectedRoom(selectedRoom() + event.key);
-
-    console.log(selectedRoom());
-  };
-
   const onConnect = () => {
     if (inputRef?.value && username()) {
       SignalingAPI.joinRoom(username()!, inputRef.value);
@@ -54,7 +48,7 @@ export const Rooms: Component = () => {
             name="roomname"
             type="text"
             class="w-48 bg-slate-800 text-slate-300 border-b-2 border-slate-400 focus:outline-none mt-1"
-            onKeyPress={updateInput}
+            onInput={(e) => setSelectedRoom(e.currentTarget.value)}
             ref={inputRef}
           />
         </Match>

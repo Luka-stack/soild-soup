@@ -1,5 +1,6 @@
 import type {
   DtlsParameters,
+  MediaKind,
   Router,
   RtpCapabilities,
 } from 'mediasoup/node/lib/types';
@@ -152,13 +153,13 @@ export class MsRoom {
       console.log('--- [Consumer] producer closed ---');
 
       peer.removeConsumer(consumer.id);
-      // emit to the consumer
-    });
 
-    // consumer.on('producerpause', () => {
-    //   console.log('--- [Consumer] producer paused ---');
-    //   this.server.to(peer.id).emit('participant_mutation');
-    // });
+      this.server.to(peerId).emit('producer_closed', {
+        peerId: consumer.appData.peerId,
+        kind: consumer.kind,
+        consumerId: consumer.id,
+      });
+    });
 
     return {
       consumerId: consumer.id,
@@ -196,7 +197,7 @@ export class MsRoom {
     if (!peer) return;
 
     const message = {
-      uuid: peer.uuid,
+      peerId: peer.uuid,
       name: peer.name,
       producers: [producerId],
     };
@@ -210,7 +211,7 @@ export class MsRoom {
     for (let peer of this._peers.values()) {
       if (peer.id === id) continue;
       producerList.push({
-        uuid: peer.uuid,
+        peerId: peer.uuid,
         name: peer.name,
         producers: peer.getProducers(),
       });
@@ -221,10 +222,9 @@ export class MsRoom {
 
   pauseProducer(id: string, producerId: string, paused: boolean) {
     const peer = this._peers.get(id);
-
     if (!peer) return;
 
-    console.log('--- [Consumer] producer paused', paused, '---');
+    console.log('--- [PauseProducer] producer paused', paused, '---');
 
     if (paused) {
       peer.pauseProducer(producerId);
@@ -232,6 +232,13 @@ export class MsRoom {
       peer.resumeProducer(producerId);
     }
 
-    this.broadcast(id, 'participant_mutation', { uuid: peer.uuid, paused });
+    this.broadcast(id, 'participant_mutation', { peerId: peer.uuid, paused });
+  }
+
+  closeProducer(id: string, kind: MediaKind) {
+    const peer = this._peers.get(id);
+    if (!peer) return;
+
+    peer.closeProducer(kind);
   }
 }

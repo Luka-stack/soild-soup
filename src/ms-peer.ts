@@ -1,6 +1,7 @@
 import type {
   Consumer,
   DtlsParameters,
+  MediaKind,
   Producer,
   Transport,
 } from 'mediasoup/node/lib/types';
@@ -63,9 +64,6 @@ export class MsPeer {
     const producer = await this._transports.get(transportId)!.produce({
       kind,
       rtpParameters,
-      appData: {
-        peerUuid: 'qwerty',
-      },
     });
 
     producer.on('transportclose', () => {
@@ -76,6 +74,9 @@ export class MsPeer {
     });
 
     this._producers.set(producer.id, producer);
+
+    console.log('=================== [] Created Producer', kind);
+
     return producer;
   }
 
@@ -83,6 +84,7 @@ export class MsPeer {
     producerId,
     consumerTransportId,
     rtpCapabilities,
+    appData,
   }: ConsumeParams): Promise<Consumer> {
     if (!this._transports.has(consumerTransportId)) {
       console.log(
@@ -98,6 +100,7 @@ export class MsPeer {
           producerId,
           rtpCapabilities,
           paused: false,
+          appData,
         });
 
       if (consumer.type === 'simulcast') {
@@ -123,6 +126,7 @@ export class MsPeer {
   }
 
   removeConsumer(consumerId: string): void {
+    this._consumers.get(consumerId)?.close();
     this._consumers.delete(consumerId);
   }
 
@@ -141,6 +145,25 @@ export class MsPeer {
 
   resumeProducer(producerId: string): void {
     this._producers.get(producerId)?.resume();
+  }
+
+  closeProducer(kind: MediaKind): void {
+    let producerId: string | null = null;
+
+    for (let prod of this._producers.values()) {
+      if (prod.kind === kind) {
+        producerId = prod.id;
+        break;
+      }
+    }
+
+    if (producerId) {
+      this._producers.get(producerId)!.close();
+      this._producers.delete(producerId);
+      return;
+    }
+
+    console.log(`--- [CloseProducer] producer of kind: ${kind} not foud ---`);
   }
 
   close(): void {

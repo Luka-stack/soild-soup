@@ -1,6 +1,6 @@
 import { useNavigate } from '@solidjs/router';
 import { Icon } from 'solid-heroicons';
-import { For, Show } from 'solid-js';
+import { For, Match, Show, Switch } from 'solid-js';
 import {
   computerDesktop,
   microphone,
@@ -11,7 +11,7 @@ import {
 
 import { SignalingAPI } from '../lib/mediasoup';
 
-import { amIMuted, participants } from '../state';
+import { amIMuted, amIStreaming, participants } from '../state';
 
 export const Room = () => {
   const navigate = useNavigate();
@@ -34,9 +34,14 @@ export const Room = () => {
               <Icon path={minus} class="absolute opacity-80 rotate-45 w-20" />
             </Show>
           </button>
-          <button class="bg-slate-700 text-white h-full flex justify-center items-center p-3 hover:bg-slate-600 relative">
+          <button
+            class="bg-slate-700 text-white h-full flex justify-center items-center p-3 hover:bg-slate-600 relative"
+            onClick={SignalingAPI.toggleStreaming}
+          >
             <Icon path={videoCamera} class="w-8" />
-            <Icon path={minus} class="absolute rotate-45 w-20" />
+            <Show when={amIStreaming() === false}>
+              <Icon path={minus} class="absolute rotate-45 w-20" />
+            </Show>
           </button>
           <button class="bg-slate-700 text-white h-full flex justify-center items-center p-3 hover:bg-slate-600 relative">
             <Icon path={computerDesktop} class="w-8" />
@@ -55,18 +60,38 @@ export const Room = () => {
         <For each={participants}>
           {(participant) => (
             <div class="p-4 text-slate-400 flex justify-center items-center relative min-w-[32%] grow shadow-2xl flex-col border border-black rounded-xl">
-              <div
-                class="rounded-full w-28 h-28 flex justify-center items-center border-2 border-black cursor-default"
-                classList={{
-                  'bg-indigo-800': !participant.muted,
-                  'bg-gray-800': participant.muted,
-                }}
-              >
-                <h1 class="font-bold text-4xl">
-                  {participant.name.substring(0, 1)}
-                </h1>
-              </div>
-              <h3 class="font-bold text-sm">{participant.name}</h3>
+              <Switch>
+                <Match when={!participant.video}>
+                  <>
+                    <div
+                      class="rounded-full w-28 h-28 flex justify-center items-center border-2 border-black cursor-default"
+                      classList={{
+                        'bg-indigo-800': !participant.muted,
+                        'bg-gray-800': participant.muted,
+                      }}
+                    >
+                      <h1 class="font-bold text-4xl">
+                        {participant.name.substring(0, 1)}
+                      </h1>
+                    </div>
+                    <h3 class="font-bold text-sm">{participant.name}</h3>
+                  </>
+                </Match>
+                <Match when={participant.video}>
+                  <>
+                    <video
+                      autoplay
+                      muted
+                      ref={(el) => (el.srcObject = participant.video!)}
+                      class="w-full h-full"
+                    />
+                    <h3 class="absolute font-bold bg-black/50 rounded-md py-1 px-2 bottom-10 right-10">
+                      {participant.uuid}
+                    </h3>
+                  </>
+                </Match>
+              </Switch>
+
               <audio
                 controls
                 autoplay
