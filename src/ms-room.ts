@@ -11,6 +11,7 @@ import { config } from './mediasoup-config';
 import {
   ConsumeParams,
   ConsumerParams,
+  MediaStreamKind,
   ProduceParams,
   TransportParams,
 } from './types';
@@ -19,6 +20,7 @@ import { Server } from 'socket.io';
 export class MsRoom {
   private _peers: Map<string, MsPeer>;
   private _router: Router | null;
+  private _screenSharing = false;
 
   constructor(public readonly name: string, private readonly server: Server) {
     this._router = null;
@@ -110,6 +112,11 @@ export class MsRoom {
   }
 
   async produce(peerId: string, params: ProduceParams): Promise<string> {
+    if (params.appData.kind === 'screen' && this._screenSharing) {
+      console.log(`--- [Produce] screen is already sharing ---`);
+      throw new Error('Cannot share another screen');
+    }
+
     const peer = this._peers.get(peerId);
 
     if (!peer) {
@@ -120,7 +127,7 @@ export class MsRoom {
     const producer = await peer.createProducer(params);
 
     console.log(
-      `--- [MsRoom]:produce; created producer ${producer.id} for ${peerId} ---`
+      `--- [MsRoom]:produce; created producer ${producer.id} for ${peerId}, ${params.appData.kind} ---`
     );
 
     return producer.id;
@@ -191,7 +198,7 @@ export class MsRoom {
     }
   }
 
-  broadcastProducer(id: string, producerId: string) {
+  broadcastProducer(id: string, producerId: string, kind: MediaStreamKind) {
     const peer = this._peers.get(id);
 
     if (!peer) return;
@@ -199,7 +206,12 @@ export class MsRoom {
     const message = {
       peerId: peer.uuid,
       name: peer.name,
-      producers: [producerId],
+      producers: [
+        {
+          id: producerId,
+          kind,
+        },
+      ],
     };
 
     this.broadcast(id, 'new_producers', [message]);

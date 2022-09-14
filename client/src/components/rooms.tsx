@@ -1,5 +1,6 @@
 import { useNavigate } from '@solidjs/router';
 import { Component, createSignal, For, Match, Switch } from 'solid-js';
+
 import { SignalingAPI } from '../lib/mediasoup';
 import { rooms, setAuthRoom, username } from '../state';
 

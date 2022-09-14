@@ -8,6 +8,8 @@ import type {
   RtpParameters,
 } from 'mediasoup/node/lib/types';
 
+export type MediaStreamKind = 'video' | 'audio' | 'screen';
+
 export interface TransportParams {
   id: string;
   iceParameters: IceParameters;
@@ -19,6 +21,9 @@ export interface ProduceParams {
   kind: MediaKind;
   transportId: string;
   rtpParameters: RtpParameters;
+  appData: {
+    kind: MediaStreamKind;
+  };
 }
 
 export interface ConsumeParams {

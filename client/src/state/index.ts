@@ -7,6 +7,7 @@ export interface Participant {
   muted: boolean;
   audio: MediaStream;
   video: MediaStream | undefined;
+  screen: MediaStream | undefined;
 }
 
 export interface PartialParticipant {
@@ -14,6 +15,7 @@ export interface PartialParticipant {
   name: string;
   audio?: MediaStream;
   video?: MediaStream;
+  screen?: MediaStream;
 }
 
 export const updateParticipants = ({
@@ -21,6 +23,7 @@ export const updateParticipants = ({
   name,
   audio,
   video,
+  screen,
 }: PartialParticipant): void => {
   const found = participants.some((p) => p.uuid === uuid);
 
@@ -32,6 +35,7 @@ export const updateParticipants = ({
         name,
         audio: audio!,
         video,
+        screen,
         muted: false,
       },
     ]);
@@ -39,8 +43,8 @@ export const updateParticipants = ({
     return;
   }
 
-  const kind = video ? 'video' : 'audio';
-  const stream = video ?? audio;
+  const kind = video ? 'video' : 'screen';
+  const stream = video ?? screen;
 
   setParticipants(
     (participant) => participant.uuid === uuid,
@@ -50,11 +54,15 @@ export const updateParticipants = ({
 };
 
 // These three should be combined
-export const [amIMuted, setAmIMuted] = createSignal<boolean>(false);
-export const [amIStreaming, setAmIStreaming] = createSignal<boolean>(false);
+export const [amIMuted, setAmIMuted] = createSignal(false);
+export const [amIStreaming, setAmIStreaming] = createSignal(false);
 export const [username, setUsername] = createSignal<string | null>(null);
 export const [authRoom, setAuthRoom] = createSignal<string | null>(null);
+
+export const [isSharing, setIsSharing] = createSignal(false);
 
 export const [rooms, setRooms] = createSignal<string[]>([]);
 
 export const [participants, setParticipants] = createStore<Participant[]>([]);
+
+export const [screen, setScreen] = createSignal<MediaStream | null>(null);

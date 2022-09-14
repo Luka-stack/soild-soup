@@ -130,7 +130,9 @@ export class MsServer {
 
     callback(producerId);
 
-    this._msRooms.get(roomName)!.broadcastProducer(socket.id, producerId);
+    this._msRooms
+      .get(roomName)!
+      .broadcastProducer(socket.id, producerId, params.appData.kind);
   }
 
   async onConsume(

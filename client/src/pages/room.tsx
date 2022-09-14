@@ -11,7 +11,13 @@ import {
 
 import { SignalingAPI } from '../lib/mediasoup';
 
-import { amIMuted, amIStreaming, participants } from '../state';
+import {
+  amIMuted,
+  amIStreaming,
+  isSharing,
+  participants,
+  screen,
+} from '../state';
 
 export const Room = () => {
   const navigate = useNavigate();
@@ -43,9 +49,14 @@ export const Room = () => {
               <Icon path={minus} class="absolute rotate-45 w-20" />
             </Show>
           </button>
-          <button class="bg-slate-700 text-white h-full flex justify-center items-center p-3 hover:bg-slate-600 relative">
+          <button
+            class="bg-slate-700 text-white h-full flex justify-center items-center p-3 hover:bg-slate-600 relative"
+            onClick={SignalingAPI.shareScreen}
+          >
             <Icon path={computerDesktop} class="w-8" />
-            <Icon path={minus} class="absolute rotate-45 w-20" />
+            <Show when={!isSharing()}>
+              <Icon path={minus} class="absolute rotate-45 w-20" />
+            </Show>
           </button>
           <button
             class="bg-rose-700 text-white h-full flex justify-center items-center p-3 hover:bg-rose-600"
@@ -61,7 +72,8 @@ export const Room = () => {
           {(participant) => (
             <div class="p-4 text-slate-400 flex justify-center items-center relative min-w-[32%] grow shadow-2xl flex-col border border-black rounded-xl">
               <Switch>
-                <Match when={!participant.video}>
+                {/* <Match when={!participant.video}> */}
+                <Match when={!participant.screen}>
                   <>
                     <div
                       class="rounded-full w-28 h-28 flex justify-center items-center border-2 border-black cursor-default"
@@ -77,7 +89,7 @@ export const Room = () => {
                     <h3 class="font-bold text-sm">{participant.name}</h3>
                   </>
                 </Match>
-                <Match when={participant.video}>
+                {/* <Match when={participant.video}>
                   <>
                     <video
                       autoplay
@@ -89,6 +101,14 @@ export const Room = () => {
                       {participant.uuid}
                     </h3>
                   </>
+                </Match> */}
+                <Match when={participant.screen}>
+                  <video
+                    autoplay
+                    muted
+                    ref={(el) => (el.srcObject = participant.screen!)}
+                    class="w-full h-full"
+                  />
                 </Match>
               </Switch>
 

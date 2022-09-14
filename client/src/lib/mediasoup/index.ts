@@ -46,6 +46,14 @@ export namespace SignalingAPI {
     _signalingHandler.toggleStreaming();
   }
 
+  export function shareScreen() {
+    if (!_signalingHandler) {
+      return;
+    }
+
+    _signalingHandler.shareScreen();
+  }
+
   // export function produceAudio(stream: MediaStream): void {
   //   if (!_signalingHandler) {
   //     return;

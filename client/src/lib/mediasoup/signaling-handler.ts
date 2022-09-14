@@ -9,11 +9,13 @@ import type {
 } from 'mediasoup-client/lib/types';
 import { socketPromise } from '../socket/socket-promise';
 import {
+  isSharing,
   participants,
   setAmIMuted,
   setAmIStreaming,
   setAuthRoom,
   setParticipants,
+  setScreen,
   updateParticipants,
 } from '../../state';
 import { batch } from 'solid-js';
@@ -27,7 +29,10 @@ interface ConsumerProps {
 interface ParticipantsProducers {
   peerId: string;
   name: string;
-  producers: string[];
+  producers: {
+    id: string;
+    kind: 'video' | 'audio' | 'screen';
+  }[];
 }
 
 interface ClosedStatus {
@@ -108,6 +113,15 @@ export class SignalingHandler {
     this.cleanListeners();
   }
 
+  async shareScreen(): Promise<void> {
+    // check if i'm producing
+
+    // check if someone else is producing
+
+    const stream = await this.getMediaStream('screen');
+    this.produce('screen', stream);
+  }
+
   private async onJoin(rtpParams: RtpCapabilities): Promise<void> {
     await this.createDevice(rtpParams);
     await this.createProducerTransport();
@@ -172,11 +186,12 @@ export class SignalingHandler {
 
     this._producerTransport!.on(
       'produce',
-      ({ kind, rtpParameters }, callback, errback) => {
+      ({ kind, rtpParameters, appData }, callback, errback) => {
         console.log(`--- [Producer Transport]: produce ${kind} ---`);
 
         socketPromise(this.socket)('produce', {
           kind,
+          appData,
           rtpParameters,
           transportId: this._producerTransport!.id,
         }).then((producerId) => {
@@ -265,15 +280,19 @@ export class SignalingHandler {
     };
 
     for (let producer of paritipantsProds.producers) {
+      // TODO delete kind, dont need it
       const { consumer, stream, kind } = await this.createConsumer(
-        producer,
+        producer.id,
         paritipantsProds.peerId
       );
 
-      if (kind === 'audio') {
+      if (producer.kind === 'audio') {
         participant.audio = stream;
-      } else {
+      } else if (producer.kind === 'video') {
         participant.video = stream;
+      } else {
+        console.log('---- setting  screen ---', stream);
+        participant.screen = stream;
       }
 
       consumer.on('trackended', () => {
@@ -394,6 +413,15 @@ export class SignalingHandler {
 
         break;
 
+      case 'screen':
+        track = source.getVideoTracks()[0];
+        params = {
+          track,
+          appData,
+        };
+
+        break;
+
       default:
         console.log(`--- [CreateProducer] Unknown kind: ${kind} ---`);
         break;
@@ -464,9 +492,22 @@ export class SignalingHandler {
     });
   }
 
-  private async getMediaStream(kind: 'video' | 'audio') {
+  private async getMediaStream(kind: 'video' | 'audio' | 'screen') {
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
       throw new Error('--- [GetMediaStream] Media Device is not available ---');
+    }
+
+    if (kind === 'screen') {
+      console.log('Getting Screen Media');
+
+      return await navigator.mediaDevices.getDisplayMedia({
+        audio: false,
+        video: {
+          width: { max: 1920 },
+          height: { max: 1080 },
+          frameRate: { max: 30 },
+        },
+      });
     }
 
     const constraints = {

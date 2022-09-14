@@ -7,7 +7,7 @@ import type {
 } from 'mediasoup/node/lib/types';
 import { v4 as uuidv4 } from 'uuid';
 
-import { ConsumeParams, ProduceParams } from './types';
+import { ConsumeParams, MediaStreamKind, ProduceParams } from './types';
 
 export class MsPeer {
   public readonly uuid: string;
@@ -55,6 +55,7 @@ export class MsPeer {
     transportId,
     kind,
     rtpParameters,
+    appData,
   }: ProduceParams): Promise<Producer> {
     if (!this._transports.has(transportId)) {
       console.log(`--- [CreateProducer] transport ${transportId} doesnt exist`);
@@ -64,6 +65,7 @@ export class MsPeer {
     const producer = await this._transports.get(transportId)!.produce({
       kind,
       rtpParameters,
+      appData,
     });
 
     producer.on('transportclose', () => {
@@ -74,8 +76,6 @@ export class MsPeer {
     });
 
     this._producers.set(producer.id, producer);
-
-    console.log('=================== [] Created Producer', kind);
 
     return producer;
   }
@@ -130,10 +130,13 @@ export class MsPeer {
     this._consumers.delete(consumerId);
   }
 
-  getProducers(): string[] {
-    const producers: string[] = [];
+  getProducers(): { id: string; kind: MediaStreamKind }[] {
+    const producers: { id: string; kind: MediaStreamKind }[] = [];
     for (let producer of this._producers.values()) {
-      producers.push(producer.id);
+      producers.push({
+        id: producer.id,
+        kind: producer.appData.kind as MediaStreamKind,
+      });
     }
 
     return producers;
