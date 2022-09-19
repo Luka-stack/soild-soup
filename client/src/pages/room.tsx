@@ -16,7 +16,7 @@ import {
   amIStreaming,
   isSharing,
   participants,
-  screen,
+  screenStream,
 } from '../state';
 
 export const Room = () => {
@@ -67,60 +67,82 @@ export const Room = () => {
         </div>
       </div>
 
-      <div class="flex w-full h-full flex-wrap gap-2">
-        <For each={participants}>
-          {(participant) => (
-            <div class="p-4 text-slate-400 flex justify-center items-center relative min-w-[32%] grow shadow-2xl flex-col border border-black rounded-xl">
-              <Switch>
-                {/* <Match when={!participant.video}> */}
-                <Match when={!participant.screen}>
-                  <>
-                    <div
-                      class="rounded-full w-28 h-28 flex justify-center items-center border-2 border-black cursor-default"
-                      classList={{
-                        'bg-indigo-800': !participant.muted,
-                        'bg-gray-800': participant.muted,
-                      }}
-                    >
-                      <h1 class="font-bold text-4xl">
-                        {participant.name.substring(0, 1)}
-                      </h1>
-                    </div>
-                    <h3 class="font-bold text-sm">{participant.name}</h3>
-                  </>
-                </Match>
-                {/* <Match when={participant.video}>
-                  <>
-                    <video
-                      autoplay
-                      muted
-                      ref={(el) => (el.srcObject = participant.video!)}
-                      class="w-full h-full"
-                    />
-                    <h3 class="absolute font-bold bg-black/50 rounded-md py-1 px-2 bottom-10 right-10">
-                      {participant.uuid}
-                    </h3>
-                  </>
-                </Match> */}
-                <Match when={participant.screen}>
-                  <video
-                    autoplay
-                    muted
-                    ref={(el) => (el.srcObject = participant.screen!)}
-                    class="w-full h-full"
-                  />
-                </Match>
-              </Switch>
+      <div class="flex flex-col space-y-5 h-full">
+        <div
+          class="flex w-full gap-2"
+          classList={{
+            'overflow-x-auto h-[20%]': screenStream() !== null,
+            'flex-wrap h-full': screenStream() === null,
+          }}
+        >
+          <For each={participants}>
+            {(participant) => (
+              <div
+                class="p-3 text-slate-400 flex justify-center items-center relative grow shadow-2xl flex-col border border-black rounded-xl h-full"
+                classList={{
+                  'w-32': screenStream() !== null,
+                  'min-w-[32%]': screenStream() === null,
+                }}
+              >
+                <Switch>
+                  <Match when={!participant.video}>
+                    <>
+                      <div
+                        class="rounded-full w-28 h-28 flex justify-center items-center border-2 border-black cursor-default"
+                        classList={{
+                          'bg-indigo-800': !participant.muted,
+                          'bg-gray-800': participant.muted,
+                        }}
+                      >
+                        <h1 class="font-bold text-4xl">
+                          {participant.name.substring(0, 1)}
+                        </h1>
+                      </div>
+                      <h3 class="font-bold text-sm">{participant.name}</h3>
+                    </>
+                  </Match>
+                  <Match when={participant.video}>
+                    <>
+                      <video
+                        autoplay
+                        muted
+                        ref={(el) => (el.srcObject = participant.video!)}
+                        class="w-full h-full"
+                      />
+                      {/* <h3 class="absolute font-bold bg-black/50 rounded-md py-1 px-2 bottom-10 right-10"> */}
+                      <h3 class="absolute font-bold bg-black/50 rounded-md py-1 px-2 bottom-2 right-2">
+                        {participant.name}
+                      </h3>
+                    </>
+                  </Match>
+                </Switch>
 
-              <audio
-                controls
+                <audio
+                  controls
+                  autoplay
+                  ref={(el) => (el.srcObject = participant.audio)}
+                  class="hidden"
+                />
+              </div>
+            )}
+          </For>
+        </div>
+
+        <Show when={screenStream()}>
+          <div class="relative h-[75%] flex justify-center items-center mx-auto w-[99%]">
+            <h3 class="absolute font-bold bg-black/50 rounded-md py-1 px-2 top-2 right-2 text-slate-400">
+              {screenStream()!.name}
+            </h3>
+            <div class="h-full w-full">
+              <video
                 autoplay
-                ref={(el) => (el.srcObject = participant.audio)}
-                class="hidden"
+                muted
+                ref={(el) => (el.srcObject = screenStream()!.stream)}
+                class="h-full w-full"
               />
             </div>
-          )}
-        </For>
+          </div>
+        </Show>
       </div>
     </div>
   );

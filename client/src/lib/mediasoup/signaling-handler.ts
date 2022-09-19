@@ -9,14 +9,14 @@ import type {
 } from 'mediasoup-client/lib/types';
 import { socketPromise } from '../socket/socket-promise';
 import {
-  isSharing,
   participants,
   setAmIMuted,
   setAmIStreaming,
   setAuthRoom,
   setParticipants,
-  setScreen,
   updateParticipants,
+  setScreenStream,
+  ScreenStream,
 } from '../../state';
 import { batch } from 'solid-js';
 
@@ -38,7 +38,7 @@ interface ParticipantsProducers {
 interface ClosedStatus {
   peerId: string;
   consumerId: string;
-  kind: MediaKind;
+  kind: 'audio' | 'video' | 'screen';
 }
 
 export class SignalingHandler {
@@ -274,6 +274,7 @@ export class SignalingHandler {
   private async consume(
     paritipantsProds: ParticipantsProducers
   ): Promise<void> {
+    let screenStream: ScreenStream | null = null;
     const participant: any = {
       uuid: paritipantsProds.peerId,
       name: paritipantsProds.name,
@@ -291,8 +292,11 @@ export class SignalingHandler {
       } else if (producer.kind === 'video') {
         participant.video = stream;
       } else {
-        console.log('---- setting  screen ---', stream);
-        participant.screen = stream;
+        screenStream = {
+          uuid: paritipantsProds.peerId,
+          name: paritipantsProds.name,
+          stream: stream,
+        };
       }
 
       consumer.on('trackended', () => {
@@ -312,7 +316,13 @@ export class SignalingHandler {
       this._consumers.set(consumer.id, consumer);
     }
 
-    updateParticipants(participant);
+    if (participant.video || participant.audio) {
+      updateParticipants(participant);
+    }
+
+    if (screenStream) {
+      setScreenStream(screenStream);
+    }
   }
 
   private async createConsumer(
@@ -451,11 +461,15 @@ export class SignalingHandler {
     this._consumers.get(consumerId)?.close();
     this._consumers.delete(consumerId);
 
-    setParticipants(
-      (participant) => participant.uuid === peerId,
-      kind,
-      () => undefined
-    );
+    if (kind === 'screen') {
+      setScreenStream(null);
+    } else {
+      setParticipants(
+        (participant) => participant.uuid === peerId,
+        kind,
+        () => undefined
+      );
+    }
   }
 
   private cleanListeners(): void {

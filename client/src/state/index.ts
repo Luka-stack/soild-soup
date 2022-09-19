@@ -7,7 +7,6 @@ export interface Participant {
   muted: boolean;
   audio: MediaStream;
   video: MediaStream | undefined;
-  screen: MediaStream | undefined;
 }
 
 export interface PartialParticipant {
@@ -15,7 +14,12 @@ export interface PartialParticipant {
   name: string;
   audio?: MediaStream;
   video?: MediaStream;
-  screen?: MediaStream;
+}
+
+export interface ScreenStream {
+  uuid: string;
+  name: string;
+  stream: MediaStream;
 }
 
 export const updateParticipants = ({
@@ -23,7 +27,6 @@ export const updateParticipants = ({
   name,
   audio,
   video,
-  screen,
 }: PartialParticipant): void => {
   const found = participants.some((p) => p.uuid === uuid);
 
@@ -35,7 +38,6 @@ export const updateParticipants = ({
         name,
         audio: audio!,
         video,
-        screen,
         muted: false,
       },
     ]);
@@ -43,13 +45,10 @@ export const updateParticipants = ({
     return;
   }
 
-  const kind = video ? 'video' : 'screen';
-  const stream = video ?? screen;
-
   setParticipants(
     (participant) => participant.uuid === uuid,
-    kind,
-    () => stream
+    'video',
+    () => video
   );
 };
 
@@ -65,4 +64,5 @@ export const [rooms, setRooms] = createSignal<string[]>([]);
 
 export const [participants, setParticipants] = createStore<Participant[]>([]);
 
-export const [screen, setScreen] = createSignal<MediaStream | null>(null);
+export const [screenStream, setScreenStream] =
+  createSignal<ScreenStream | null>(null);
