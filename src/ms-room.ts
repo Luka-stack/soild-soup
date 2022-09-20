@@ -1,6 +1,5 @@
 import type {
   DtlsParameters,
-  MediaKind,
   Router,
   RtpCapabilities,
 } from 'mediasoup/node/lib/types';
@@ -30,7 +29,7 @@ export class MsRoom {
   addPeer(peer: MsPeer): void {
     this._peers.set(peer.id, peer);
 
-    console.log('--- [MsRoom]:addPeer usser', peer.name, 'added ---');
+    console.log('--- [MsRoom]:addPeer user', peer.name, 'added ---');
   }
 
   removePeer(peerId: string): void {
@@ -38,7 +37,7 @@ export class MsRoom {
 
     if (!peer) {
       console.log(`--- [RemovePeer] peer ${peerId} not found ---`);
-      throw new Error('Peer not found');
+      return;
     }
 
     peer.close();
@@ -163,7 +162,7 @@ export class MsRoom {
 
       this.server.to(peerId).emit('producer_closed', {
         peerId: consumer.appData.peerId,
-        kind: consumer.kind,
+        kind: consumer.appData.kind,
         consumerId: consumer.id,
       });
     });
@@ -247,7 +246,7 @@ export class MsRoom {
     this.broadcast(id, 'participant_mutation', { peerId: peer.uuid, paused });
   }
 
-  closeProducer(id: string, kind: MediaKind) {
+  closeProducer(id: string, kind: MediaStreamKind) {
     const peer = this._peers.get(id);
     if (!peer) return;
 

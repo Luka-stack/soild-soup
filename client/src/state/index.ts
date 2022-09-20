@@ -55,10 +55,9 @@ export const updateParticipants = ({
 // These three should be combined
 export const [amIMuted, setAmIMuted] = createSignal(false);
 export const [amIStreaming, setAmIStreaming] = createSignal(false);
+export const [amIScreening, setAmIScreening] = createSignal(false);
 export const [username, setUsername] = createSignal<string | null>(null);
 export const [authRoom, setAuthRoom] = createSignal<string | null>(null);
-
-export const [isSharing, setIsSharing] = createSignal(false);
 
 export const [rooms, setRooms] = createSignal<string[]>([]);
 

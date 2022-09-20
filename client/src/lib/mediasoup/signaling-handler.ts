@@ -17,6 +17,7 @@ import {
   updateParticipants,
   setScreenStream,
   ScreenStream,
+  setAmIScreening,
 } from '../../state';
 import { batch } from 'solid-js';
 
@@ -52,8 +53,31 @@ export class SignalingHandler {
     this.initListeners();
   }
 
-  join(username: string, roomName: string): void {
-    this.socket.emit('join', username, roomName);
+  async join(
+    username: string,
+    roomName: string,
+    createRoom: boolean
+  ): Promise<string | null> {
+    const { data, error } = await socketPromise(this.socket)('join', {
+      username,
+      roomName,
+      createRoom,
+    });
+
+    if (error) {
+      return error as string;
+    }
+
+    if (data) {
+      this.onJoin(data);
+      return null;
+    }
+
+    return "Coudn't join room";
+  }
+
+  hasProducer(kind: string): boolean {
+    return this._producers.has(kind);
   }
 
   changeMutation(): void {
@@ -76,16 +100,15 @@ export class SignalingHandler {
   }
 
   async toggleStreaming(): Promise<void> {
-    const producer = this._producers.get('video');
+    if (this._producers.has('video')) {
+      this._producers.get('video')!.close();
+      this._producers.delete('video');
 
-    if (producer) {
-      producer.close();
       this.socket.emit('producer_closed', 'video');
       setAmIStreaming(false);
       return;
     }
 
-    // Start streaming / start video producer
     const video = await this.getMediaStream('video');
     this.produce('video', video);
     setAmIStreaming(true);
@@ -114,12 +137,18 @@ export class SignalingHandler {
   }
 
   async shareScreen(): Promise<void> {
-    // check if i'm producing
+    if (this._producers.has('screen')) {
+      this._producers.get('screen')!.close();
+      this._producers.delete('screen');
 
-    // check if someone else is producing
+      this.socket.emit('producer_closed', 'screen');
+      setAmIScreening(false);
+      return;
+    }
 
     const stream = await this.getMediaStream('screen');
     this.produce('screen', stream);
+    setAmIScreening(true);
   }
 
   private async onJoin(rtpParams: RtpCapabilities): Promise<void> {
@@ -284,7 +313,8 @@ export class SignalingHandler {
       // TODO delete kind, dont need it
       const { consumer, stream, kind } = await this.createConsumer(
         producer.id,
-        paritipantsProds.peerId
+        paritipantsProds.peerId,
+        producer.kind
       );
 
       if (producer.kind === 'audio') {
@@ -327,7 +357,8 @@ export class SignalingHandler {
 
   private async createConsumer(
     producerId: string,
-    participantId: string
+    participantId: string,
+    mediaKind: string
   ): Promise<ConsumerProps> {
     const { consumerId, kind, rtpParameters } = await socketPromise(
       this.socket
@@ -337,6 +368,7 @@ export class SignalingHandler {
       rtpCapabilities: this._device!.rtpCapabilities,
       appData: {
         peerId: participantId,
+        kind: mediaKind,
       },
     });
 
@@ -480,12 +512,6 @@ export class SignalingHandler {
   }
 
   private initListeners() {
-    this.socket.on('joined_room', (params: RtpCapabilities) => {
-      console.log('--- [Event: joined_room] ---', params);
-
-      this.onJoin(params);
-    });
-
     this.socket.on(
       'new_producers',
       (participantsProds: ParticipantsProducers[]) => {

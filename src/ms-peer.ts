@@ -150,11 +150,11 @@ export class MsPeer {
     this._producers.get(producerId)?.resume();
   }
 
-  closeProducer(kind: MediaKind): void {
+  closeProducer(kind: MediaStreamKind): void {
     let producerId: string | null = null;
 
     for (let prod of this._producers.values()) {
-      if (prod.kind === kind) {
+      if (prod.appData.kind === kind) {
         producerId = prod.id;
         break;
       }
@@ -163,6 +163,9 @@ export class MsPeer {
     if (producerId) {
       this._producers.get(producerId)!.close();
       this._producers.delete(producerId);
+
+      console.log(`--- [CloseProducer] producer of kind: ${kind} closed ---`);
+
       return;
     }
 

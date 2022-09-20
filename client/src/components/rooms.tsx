@@ -1,5 +1,5 @@
 import { useNavigate } from '@solidjs/router';
-import { Component, createSignal, For, Match, Switch } from 'solid-js';
+import { batch, Component, createSignal, For, Match, Switch } from 'solid-js';
 
 import { SignalingAPI } from '../lib/mediasoup';
 import { rooms, setAuthRoom, username } from '../state';
@@ -9,15 +9,31 @@ export const Rooms: Component = () => {
 
   const [selectedRoom, setSelectedRoom] = createSignal<string>('');
   const [createRoom, setCreateRoom] = createSignal(true);
+  const [error, setError] = createSignal('');
 
-  let inputRef: HTMLInputElement | undefined;
+  const changeTab = () => {
+    batch(() => {
+      setSelectedRoom('');
+      setError('');
+      setCreateRoom(!createRoom());
+    });
+  };
 
-  const onConnect = () => {
-    if (inputRef?.value && username()) {
-      SignalingAPI.joinRoom(username()!, inputRef.value);
+  const onConnect = async () => {
+    if (username() && selectedRoom()) {
+      const result = await SignalingAPI.joinRoom(
+        username()!,
+        selectedRoom(),
+        createRoom()
+      );
 
-      setAuthRoom(inputRef.value);
-      navigate(`/rooms/${inputRef.value}`);
+      if (result) {
+        setError(result);
+        return;
+      }
+
+      setAuthRoom(selectedRoom());
+      navigate(`/rooms/${selectedRoom()}`);
     }
   };
 
@@ -27,14 +43,14 @@ export const Rooms: Component = () => {
         <span
           class="w-1/2 py-1 rounded-t-xl border-b-2 border-slate-500 cursor-pointer hover:bg-slate-700/50"
           classList={{ 'bg-slate-700/50': !createRoom() }}
-          onClick={() => setCreateRoom(false)}
+          onClick={changeTab}
         >
           Select Room
         </span>
         <span
           class="w-1/2 py-1 rounded-t-xl border-b-2 border-slate-500 cursor-pointer hover:bg-slate-700/50"
           classList={{ 'bg-slate-700/50': createRoom() }}
-          onClick={() => setCreateRoom(true)}
+          onClick={changeTab}
         >
           Create Room
         </span>
@@ -50,7 +66,6 @@ export const Rooms: Component = () => {
             type="text"
             class="w-48 bg-slate-800 text-slate-300 border-b-2 border-slate-400 focus:outline-none mt-1"
             onInput={(e) => setSelectedRoom(e.currentTarget.value)}
-            ref={inputRef}
           />
         </Match>
         <Match when={!createRoom()}>
@@ -74,12 +89,14 @@ export const Rooms: Component = () => {
         </Match>
       </Switch>
 
+      <p class="text-sm text-red-500 mt-1">{error()}</p>
+
       <button
         class="bg-blue-700 rounded-md py-1 text-slate-200 cursor-pointer hover:bg-blue-800 w-[80%] mt-5 disabled:bg-gray-700 disabled:cursor-not-allowed"
         disabled={selectedRoom() === null || selectedRoom()!.trim() === ''}
         onClick={onConnect}
       >
-        Connect
+        {createRoom() ? 'Create Room' : 'Connect'}
       </button>
     </div>
   );

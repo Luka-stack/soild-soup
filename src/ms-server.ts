@@ -5,10 +5,12 @@ import { MsPeer } from './ms-peer';
 import {
   ConsumeParams,
   ConsumerParams,
+  JoinRoomPayload,
+  MediaStreamKind,
   ProduceParams,
   TransportParams,
 } from './types';
-import { MediaKind } from 'mediasoup/node/lib/RtpParameters';
+import type { RtpCapabilities } from 'mediasoup/node/lib/types';
 
 export class MsServer {
   private _server: Server;
@@ -28,10 +30,15 @@ export class MsServer {
 
   async joinRoom(
     socket: Socket,
-    nickname: string,
-    roomName: string
+    { username, roomName, createRoom }: JoinRoomPayload,
+    callback: (response: { error?: string; data?: RtpCapabilities }) => void
   ): Promise<void> {
     let msRoom = this._msRooms.get(roomName);
+
+    if (createRoom && msRoom) {
+      callback({ error: 'Room already exists' });
+      return;
+    }
 
     if (!msRoom) {
       msRoom = new MsRoom(roomName, this._server);
@@ -41,13 +48,12 @@ export class MsServer {
       this.broadcastRooms();
     }
 
-    const peer = new MsPeer(socket.id, nickname);
+    const peer = new MsPeer(socket.id, username);
     msRoom.addPeer(peer);
     socket.data.roomName = roomName;
 
     const routerParams = await msRoom.getRouterCapabilities();
-
-    socket.emit('joined_room', routerParams);
+    callback({ data: routerParams });
   }
 
   broadcastRooms(socket?: Socket) {
@@ -177,7 +183,7 @@ export class MsServer {
     this._msRooms.get(roomName)!.pauseProducer(socket.id, producerId, paused);
   }
 
-  onProducerClosed(socket: Socket, kind: MediaKind): void {
+  onProducerClosed(socket: Socket, kind: MediaStreamKind): void {
     const roomName = socket.data.roomName;
     if (!this._msRooms.has(roomName)) {
       console.log(`--- [onProducerPaused] room ${roomName} doesnt exist ---`);
@@ -209,8 +215,8 @@ export class MsServer {
         this.broadcastRooms(socket);
       });
 
-      socket.on('join', (nickname, roomName) => {
-        this.joinRoom(socket, nickname, roomName);
+      socket.on('join', (payload, callback) => {
+        this.joinRoom(socket, payload, callback);
       });
 
       // CLEAN MEDIASOUP COMUNICATION

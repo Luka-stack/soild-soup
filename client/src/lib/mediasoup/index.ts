@@ -13,12 +13,16 @@ export namespace SignalingAPI {
     _signalingHandler = new SignalingHandler(socket);
   }
 
-  export function joinRoom(username: string, roomName: string): void {
+  export async function joinRoom(
+    username: string,
+    roomName: string,
+    createRoom: boolean
+  ): Promise<string | null> {
     if (!_signalingHandler) {
-      return;
+      return 'Not connected to server';
     }
 
-    _signalingHandler.join(username, roomName);
+    return await _signalingHandler.join(username, roomName, createRoom);
   }
 
   export function changeMutation() {
@@ -54,11 +58,11 @@ export namespace SignalingAPI {
     _signalingHandler.shareScreen();
   }
 
-  // export function produceAudio(stream: MediaStream): void {
-  //   if (!_signalingHandler) {
-  //     return;
-  //   }
+  export function hasProducer(kind: string): boolean {
+    if (!_signalingHandler) {
+      return false;
+    }
 
-  //   _signalingHandler.produce('audio', stream);
-  // }
+    return _signalingHandler.hasProducer(kind);
+  }
 }

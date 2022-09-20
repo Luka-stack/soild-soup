@@ -42,3 +42,9 @@ export interface ConsumerParams {
   type: ConsumerType;
   rtpParameters: RtpParameters;
 }
+
+export interface JoinRoomPayload {
+  roomName: string;
+  username: string;
+  createRoom: boolean;
+}
