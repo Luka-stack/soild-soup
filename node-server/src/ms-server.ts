@@ -209,7 +209,7 @@ export class MsServer {
 
   initListeners() {
     this._server.on('connection', (socket) => {
-      socket.on('startSession', () => {
+      socket.on('start_session', () => {
         console.log(`--- Socket ${socket.id} connected to server ---`);
 
         this.broadcastRooms(socket);
