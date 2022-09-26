@@ -15,7 +15,7 @@ export namespace WebSocket {
       });
 
       _socket.once('connect', () => {
-        _socket?.emit('startSession');
+        _socket?.emit('start_session');
       });
 
       _socket.on('disconnect', () => console.log('Socket disconnected'));
