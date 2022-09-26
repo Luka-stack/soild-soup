@@ -8,7 +8,9 @@ import {
 import type { Socket } from 'socket.io';
 
 import { AllExceptionsFilter } from '../common/filters/all-exceptions-filter';
+import { ConnectTransportDto } from './dto/connect-transport.dto';
 import { JoinDto } from './dto/join-room.dto';
+import { ProduceDto } from './dto/produce.dto';
 import { SignalingService } from './signaling.service';
 
 @WebSocketGateway({
@@ -24,5 +26,32 @@ export class SignalingGateway {
   @SubscribeMessage('join')
   onJoin(@MessageBody() data: JoinDto, @ConnectedSocket() client: Socket) {
     return this.signalingService.joinRoom(data, client);
+  }
+
+  @SubscribeMessage('start_session')
+  onStartSession(@ConnectedSocket() client: Socket) {
+    const rooms = this.signalingService.getRoomNames();
+    client.emit('rooms', rooms);
+  }
+
+  @SubscribeMessage('create_webrtc_transport')
+  onCreateWebRtcTransport(@ConnectedSocket() client: Socket) {
+    return this.signalingService.createWebRtcTransport(client);
+  }
+
+  @SubscribeMessage('connect_transport')
+  onConnectTransport(
+    @MessageBody() data: ConnectTransportDto,
+    @ConnectedSocket() client: Socket,
+  ) {
+    return this.signalingService.connectTransport(data, client);
+  }
+
+  @SubscribeMessage('produce')
+  onProduce(
+    @MessageBody() data: ProduceDto,
+    @ConnectedSocket() client: Socket,
+  ) {
+    return this.signalingService.produce(data, client);
   }
 }
