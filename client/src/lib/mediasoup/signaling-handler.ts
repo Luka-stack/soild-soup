@@ -58,22 +58,18 @@ export class SignalingHandler {
     roomName: string,
     createRoom: boolean
   ): Promise<string | null> {
-    const { data, error } = await socketPromise(this.socket)('join', {
-      username,
-      roomName,
-      createRoom,
-    });
+    try {
+      const params = await socketPromise(this.socket)('join', {
+        username,
+        roomName,
+        createRoom,
+      });
 
-    if (error) {
-      return error as string;
-    }
-
-    if (data) {
-      this.onJoin(data);
+      this.onJoin(params);
       return null;
+    } catch (error: any) {
+      return error.message[0];
     }
-
-    return "Coudn't join room";
   }
 
   hasProducer(kind: string): boolean {
@@ -173,15 +169,6 @@ export class SignalingHandler {
     try {
       this._device = new Device();
       await this._device.load({ routerRtpCapabilities });
-
-      this._device.observer.on('newtransport', (transport) => {
-        transport.observer.on('newconsumer', (consumer: any) => {
-          consumer.observer.on('pause', () => {
-            console.log('consumer closed');
-          });
-        });
-      });
-
       console.log('--- [Create Device] device created ---');
     } catch (error: any) {
       if (error.name === 'UnsupportedError') {
@@ -364,7 +351,7 @@ export class SignalingHandler {
       this.socket
     )('consume', {
       producerId,
-      consumerTransportId: this._consumerTransport!.id,
+      transportId: this._consumerTransport!.id,
       rtpCapabilities: this._device!.rtpCapabilities,
       appData: {
         peerId: participantId,

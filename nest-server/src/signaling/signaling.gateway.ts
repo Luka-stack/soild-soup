@@ -9,6 +9,7 @@ import type { Socket } from 'socket.io';
 
 import { AllExceptionsFilter } from '../common/filters/all-exceptions-filter';
 import { ConnectTransportDto } from './dto/connect-transport.dto';
+import { ConsumeDto } from './dto/consume.dto';
 import { JoinDto } from './dto/join-room.dto';
 import { ProduceDto } from './dto/produce.dto';
 import { SignalingService } from './signaling.service';
@@ -53,5 +54,18 @@ export class SignalingGateway {
     @ConnectedSocket() client: Socket,
   ) {
     return this.signalingService.produce(data, client);
+  }
+
+  @SubscribeMessage('get_producers')
+  onGetProducers(@ConnectedSocket() client: Socket) {
+    return this.signalingService.getProducers(client);
+  }
+
+  @SubscribeMessage('consume')
+  onConsume(
+    @MessageBody() data: ConsumeDto,
+    @ConnectedSocket() client: Socket,
+  ) {
+    return this.signalingService.consume(data, client);
   }
 }

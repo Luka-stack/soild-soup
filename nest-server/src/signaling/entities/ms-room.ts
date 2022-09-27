@@ -3,11 +3,18 @@ import type {
   Router,
   RtpCapabilities,
 } from 'mediasoup/node/lib/types';
+import type { Socket } from 'socket.io';
+
 import { createRouter } from '../../lib/mediasoup/workers';
 import { config } from '../../lib/mediasoup/config';
-
 import { MsPeer } from './ms-peer';
-import { TransportParams } from 'src/types';
+import type {
+  ConsumeParams,
+  PeerConsumer,
+  PeerProducer,
+  ProduceParams,
+  TransportParams,
+} from '../../types';
 
 export class MsRoom {
   private peers: Map<string, MsPeer>;
@@ -20,7 +27,22 @@ export class MsRoom {
   }
 
   addPeer(peer: MsPeer): void {
-    this.peers.set(peer.username, peer);
+    this.peers.set(peer.uuid, peer);
+  }
+
+  getPeer(peerId: string): MsPeer | undefined {
+    return this.peers.get(peerId);
+  }
+
+  getPeerProducers(excludePeer = ''): PeerProducer[] {
+    const peerProducers: PeerProducer[] = [];
+
+    for (const peer of this.peers.values()) {
+      if (peer.uuid === excludePeer) continue;
+      peerProducers.push(peer.getPeerProducer());
+    }
+
+    return peerProducers;
   }
 
   async getRouterCapabilities(): Promise<RtpCapabilities> {
@@ -86,18 +108,54 @@ export class MsRoom {
     await this.peers.get(peerId).connectTransport(params);
   }
 
-  // TODO Add params type
-  async produce(peerId: string, params: any): Promise<string> {
+  produce(peerId: string, params: ProduceParams): Promise<PeerProducer> {
     if (params.appData.kind === 'screen' && this.screenSharing) {
       throw new Error('Cannot share another screen');
     }
 
-    if (!this.peers.has(peerId)) {
+    const peer = this.peers.get(peerId);
+
+    if (!peer) {
       throw new Error('User not connected');
     }
 
-    const producer = await this.peers.get(peerId).createProducer(params);
+    return peer.createProducer(params);
+  }
 
-    return producer.id;
+  async consume(socket: Socket, params: ConsumeParams): Promise<PeerConsumer> {
+    if (!this.peers.has(socket.data.peerId)) {
+      throw new Error('User not connected');
+    }
+
+    if (
+      !this.router.canConsume({
+        producerId: params.producerId,
+        rtpCapabilities: params.rtpCapabilities,
+      })
+    ) {
+      throw new Error(`Cannot consume ${params.appData.kind}`);
+    }
+
+    const consumer = await this.peers
+      .get(socket.data.peerId)
+      .createConsumer(params);
+
+    consumer.on('producerclose', () => {
+      this.peers.get(socket.data.peerId).removeConsumer(consumer.id);
+
+      socket.emit('producer_closed', {
+        peerId: consumer.appData.peerId,
+        kind: consumer.appData.kind,
+        consumerId: consumer.id,
+      });
+    });
+
+    return {
+      consumerId: consumer.id,
+      producerId: params.producerId,
+      kind: consumer.kind,
+      type: consumer.type,
+      rtpParameters: consumer.rtpParameters,
+    };
   }
 }

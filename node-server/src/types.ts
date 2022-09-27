@@ -28,7 +28,7 @@ export interface ProduceParams {
 
 export interface ConsumeParams {
   producerId: string;
-  consumerTransportId: string;
+  transportId: string;
   rtpCapabilities: RtpCapabilities;
   appData: {
     peerId: string;

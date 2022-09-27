@@ -82,26 +82,22 @@ export class MsPeer {
 
   async createConsumer({
     producerId,
-    consumerTransportId,
+    transportId,
     rtpCapabilities,
     appData,
   }: ConsumeParams): Promise<Consumer> {
-    if (!this._transports.has(consumerTransportId)) {
-      console.log(
-        `--- [CreateConsumer] transport ${consumerTransportId} doesnt exist`
-      );
+    if (!this._transports.has(transportId)) {
+      console.log(`--- [CreateConsumer] transport ${transportId} doesnt exist`);
       throw new Error("Transport doesn't exist");
     }
 
     try {
-      const consumer = await this._transports
-        .get(consumerTransportId)!
-        .consume({
-          producerId,
-          rtpCapabilities,
-          paused: false,
-          appData,
-        });
+      const consumer = await this._transports.get(transportId)!.consume({
+        producerId,
+        rtpCapabilities,
+        paused: false,
+        appData,
+      });
 
       if (consumer.type === 'simulcast') {
         await consumer.setPreferredLayers({
