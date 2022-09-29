@@ -2,11 +2,12 @@ import { Injectable } from '@nestjs/common';
 import type { RtpCapabilities } from 'mediasoup/node/lib/types';
 import { Socket } from 'socket.io';
 
-import { PeerConsumer, SocketException } from '../types';
+import { PeerConsumer, SocketException, TransportParams } from '../types';
 import { ConnectTransportDto } from './dto/connect-transport.dto';
 import { ConsumeDto } from './dto/consume.dto';
 import { JoinDto } from './dto/join-room.dto';
 import { ProduceDto } from './dto/produce.dto';
+import { ProducerPausedDto } from './dto/producer-paused.dto';
 import { MsPeer } from './entities/ms-peer';
 import { MsRoom } from './entities/ms-room';
 
@@ -47,7 +48,9 @@ export class SignalingService {
     return this.msRooms.get(roomName).getRouterCapabilities();
   }
 
-  async createWebRtcTransport(client: Socket) {
+  async createWebRtcTransport(
+    client: Socket,
+  ): Promise<TransportParams | SocketException> {
     const roomName = client.data.roomName;
 
     if (!roomName || !this.msRooms.has(roomName)) {
@@ -76,10 +79,13 @@ export class SignalingService {
   async connectTransport(
     data: ConnectTransportDto,
     client: Socket,
-  ): Promise<void | SocketException> {
+  ): Promise<boolean | SocketException> {
     const roomName = client.data.roomName;
 
     if (!roomName || !this.msRooms.has(roomName)) {
+      console.log(
+        '--- [SignalingService] connectTransport; Room doesnt exist ---',
+      );
       return new Promise((resolve) => {
         resolve({
           error: 'Room Error',
@@ -89,10 +95,17 @@ export class SignalingService {
     }
 
     try {
-      await this.msRooms
-        .get(roomName)
-        .connectTransport(client.data.peerId, data);
+      console.log(
+        '--- [SignalingService] connectTransport; transport connected ---',
+      );
+
+      this.msRooms.get(roomName).connectTransport(client.data.peerId, data);
+      return true;
     } catch (error) {
+      console.log(
+        '--- [SignalingService] connectTransport; connection error ---',
+      );
+
       return new Promise((resolve) => {
         resolve({
           error: 'Connection Error',
@@ -126,7 +139,7 @@ export class SignalingService {
     return peerProducer.producers[0].id;
   }
 
-  consume(
+  async consume(
     data: ConsumeDto,
     client: Socket,
   ): Promise<PeerConsumer | SocketException> {
@@ -142,7 +155,62 @@ export class SignalingService {
     }
 
     try {
-      return this.msRooms.get(roomName).consume(client.data.peerId, data);
+      return this.msRooms.get(roomName).consume(client, data);
+    } catch (error) {
+      return new Promise((resolve) => {
+        resolve({
+          error: 'Consume Error',
+          message: [error.message],
+        });
+      });
+    }
+  }
+
+  producerPaused({ id, paused }: ProducerPausedDto, client: Socket) {
+    const roomName = client.data.roomName;
+
+    if (!roomName || !this.msRooms.has(roomName)) {
+      return new Promise((resolve) => {
+        resolve({
+          error: 'Room Error',
+          message: ["Room doesn't exist"],
+        });
+      });
+    }
+
+    try {
+      this.msRooms.get(roomName).pauseProducer(client.data.peerId, id, paused);
+
+      this.broadcastToRoom(client, 'participant_mutation', {
+        peerId: client.data.peerId,
+        paused,
+      });
+
+      return true;
+    } catch (error) {
+      return new Promise((resolve) => {
+        resolve({
+          error: 'Consume Error',
+          message: [error.message],
+        });
+      });
+    }
+  }
+
+  producerClosed(kind: string, client: Socket) {
+    const roomName = client.data.roomName;
+
+    if (!roomName || !this.msRooms.has(roomName)) {
+      return new Promise((resolve) => {
+        resolve({
+          error: 'Room Error',
+          message: ["Room doesn't exist"],
+        });
+      });
+    }
+
+    try {
+      this.msRooms.get(roomName).closeProducer(client.data.peerId, kind);
     } catch (error) {
       return new Promise((resolve) => {
         resolve({
@@ -172,6 +240,25 @@ export class SignalingService {
     client.emit('new_producers', producers);
   }
 
+  disconnect(client: Socket) {
+    const roomName = client.data.roomName;
+    if (!this.msRooms.has(roomName)) {
+      console.log(`--- [ExitRoom] room ${roomName} doesnt exist ---`);
+      return;
+    }
+
+    this.msRooms.get(roomName).removePeer(client.data.peerId);
+
+    this.broadcastToRoom(client, 'participant_left', client.data.peerId);
+    client.leave(roomName);
+    client.data = {};
+
+    if (!this.msRooms.get(roomName).getPeersNumber()) {
+      this.msRooms.delete(roomName);
+      this.broadcast(client, 'rooms', this.getRoomNames());
+    }
+  }
+
   getRoomNames(): string[] {
     const rooms: string[] = [];
 
@@ -184,6 +271,7 @@ export class SignalingService {
 
   broadcast(socket: Socket, event: string, payload: any): void {
     socket.broadcast.emit(event, payload);
+    socket.emit(event, payload);
   }
 
   broadcastToRoom(socket: Socket, event: string, payload: any): void {

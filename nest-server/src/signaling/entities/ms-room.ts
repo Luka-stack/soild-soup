@@ -34,6 +34,10 @@ export class MsRoom {
     return this.peers.get(peerId);
   }
 
+  getPeersNumber(): number {
+    return this.peers.size;
+  }
+
   getPeerProducers(excludePeer = ''): PeerProducer[] {
     const peerProducers: PeerProducer[] = [];
 
@@ -43,6 +47,16 @@ export class MsRoom {
     }
 
     return peerProducers;
+  }
+
+  removePeer(peerId: any) {
+    if (!this.peers.get(peerId)) {
+      console.log(`--- [RemovePeer] peer ${peerId} not found ---`);
+      return;
+    }
+
+    this.peers.get(peerId).close();
+    this.peers.delete(peerId);
   }
 
   async getRouterCapabilities(): Promise<RtpCapabilities> {
@@ -97,15 +111,15 @@ export class MsRoom {
     };
   }
 
-  async connectTransport(
+  connectTransport(
     peerId: string,
     params: { transportId: string; dtlsParameters: DtlsParameters },
-  ): Promise<void> {
+  ) {
     if (!this.peers.has(peerId)) {
       throw new Error('User not connected');
     }
 
-    await this.peers.get(peerId).connectTransport(params);
+    this.peers.get(peerId).connectTransport(params);
   }
 
   produce(peerId: string, params: ProduceParams): Promise<PeerProducer> {
@@ -157,5 +171,27 @@ export class MsRoom {
       type: consumer.type,
       rtpParameters: consumer.rtpParameters,
     };
+  }
+
+  pauseProducer(peerId: string, id: string, paused: boolean) {
+    if (!this.peers.has(peerId)) {
+      throw new Error('User not connected');
+    }
+
+    console.log('--- [PauseProducer] producer paused', paused, '---');
+
+    if (paused) {
+      this.peers.get(peerId).pauseProducer(id);
+    } else {
+      this.peers.get(peerId).resumeProducer(id);
+    }
+  }
+
+  closeProducer(peerId: any, kind: string) {
+    if (!this.peers.has(peerId)) {
+      throw new Error('User not connected');
+    }
+
+    this.peers.get(peerId).closeProducer(kind);
   }
 }

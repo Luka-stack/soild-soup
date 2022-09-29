@@ -58,6 +58,40 @@ export class MsPeer {
     this.consumers.delete(id);
   }
 
+  resumeProducer(producerId: any) {
+    this.producers.get(producerId)?.resume();
+  }
+  pauseProducer(producerId: any) {
+    this.producers.get(producerId)?.pause();
+  }
+
+  close() {
+    this.transports.forEach((transport) => transport.close());
+    this.producers.forEach((producer) => producer.close());
+    this.consumers.forEach((consumer) => consumer.close());
+  }
+
+  closeProducer(kind: string) {
+    let producerId: string | null = null;
+
+    for (const prod of this.producers.values()) {
+      if (prod.appData.kind === kind) {
+        producerId = prod.id;
+        break;
+      }
+    }
+
+    if (producerId) {
+      this.producers.get(producerId).close();
+      this.producers.delete(producerId);
+
+      console.log(`--- [CloseProducer] producer of kind: ${kind} closed ---`);
+      return;
+    }
+
+    console.log(`--- [CloseProducer] producer of kind: ${kind} not foud ---`);
+  }
+
   async connectTransport(params: {
     transportId: string;
     dtlsParameters: DtlsParameters;
@@ -86,6 +120,12 @@ export class MsPeer {
       rtpParameters,
       appData,
     });
+
+    console.log(
+      '--- [MsPeer]:createProducer; producer created',
+      producer.id,
+      '---',
+    );
 
     producer.on('transportclose', () => {
       producer.close();

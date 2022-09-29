@@ -196,7 +196,7 @@ export class MsServer {
   onDisconnect(socket: Socket): void {
     const roomName = socket.data.roomName;
     if (!this._msRooms.has(roomName)) {
-      console.log(`--- [onGetProducers] room ${roomName} doesnt exist ---`);
+      console.log(`--- [Disconnect] room ${roomName} doesnt exist ---`);
       return;
     }
 

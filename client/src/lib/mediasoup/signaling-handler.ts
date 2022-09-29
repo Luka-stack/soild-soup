@@ -43,11 +43,11 @@ interface ClosedStatus {
 }
 
 export class SignalingHandler {
-  private _device: Device | null = null;
-  private _producerTransport: Transport | null = null;
-  private _consumerTransport: Transport | null = null;
-  private _consumers: Map<string, Consumer> = new Map();
-  private _producers: Map<string, Producer> = new Map();
+  private device: Device | null = null;
+  private producerTransport: Transport | null = null;
+  private consumerTransport: Transport | null = null;
+  private consumers: Map<string, Consumer> = new Map();
+  private producers: Map<string, Producer> = new Map();
 
   constructor(private readonly socket: Socket) {
     this.initListeners();
@@ -73,11 +73,11 @@ export class SignalingHandler {
   }
 
   hasProducer(kind: string): boolean {
-    return this._producers.has(kind);
+    return this.producers.has(kind);
   }
 
   changeMutation(): void {
-    const producer = this._producers.get('audio');
+    const producer = this.producers.get('audio');
 
     if (!producer) {
       return;
@@ -92,15 +92,18 @@ export class SignalingHandler {
       producer.pause();
     }
 
-    this.socket.emit('producer_paused', producer.id, producerPaused);
+    this.socket.emit('producer_paused', {
+      id: producer.id,
+      paused: producerPaused,
+    });
   }
 
   async toggleStreaming(): Promise<void> {
-    if (this._producers.has('video')) {
-      this._producers.get('video')!.close();
-      this._producers.delete('video');
+    if (this.producers.has('video')) {
+      this.producers.get('video')!.close();
+      this.producers.delete('video');
 
-      this.socket.emit('producer_closed', 'video');
+      this.socket.emit('producer_closed', { kind: 'video' });
       setAmIStreaming(false);
       return;
     }
@@ -111,11 +114,11 @@ export class SignalingHandler {
   }
 
   resumeProducer(producerType: string): void {
-    if (!this._producers.has(producerType)) {
+    if (!this.producers.has(producerType)) {
       return;
     }
 
-    this._producers.get(producerType)!.resume();
+    this.producers.get(producerType)!.resume();
   }
 
   disconnect(): void {
@@ -127,17 +130,17 @@ export class SignalingHandler {
 
     this.socket.emit('exit_room');
 
-    this._consumerTransport?.close();
-    this._producerTransport?.close();
+    this.consumerTransport?.close();
+    this.producerTransport?.close();
     this.cleanListeners();
   }
 
   async shareScreen(): Promise<void> {
-    if (this._producers.has('screen')) {
-      this._producers.get('screen')!.close();
-      this._producers.delete('screen');
+    if (this.producers.has('screen')) {
+      this.producers.get('screen')!.close();
+      this.producers.delete('screen');
 
-      this.socket.emit('producer_closed', 'screen');
+      this.socket.emit('producer_closed', { kind: 'screen' });
       setAmIScreening(false);
       return;
     }
@@ -167,8 +170,8 @@ export class SignalingHandler {
 
   private async createDevice(routerRtpCapabilities: RtpCapabilities) {
     try {
-      this._device = new Device();
-      await this._device.load({ routerRtpCapabilities });
+      this.device = new Device();
+      await this.device.load({ routerRtpCapabilities });
       console.log('--- [Create Device] device created ---');
     } catch (error: any) {
       if (error.name === 'UnsupportedError') {
@@ -180,27 +183,30 @@ export class SignalingHandler {
   private async createProducerTransport(): Promise<void> {
     const params = await socketPromise(this.socket)('create_webrtc_transport');
 
-    this._producerTransport = this._device!.createSendTransport(params);
+    this.producerTransport = this.device!.createSendTransport(params);
 
-    this._producerTransport!.on(
+    this.producerTransport!.on(
       'connect',
       ({ dtlsParameters }, callback, errback) => {
         socketPromise(this.socket)('connect_transport', {
           dtlsParameters,
           transportId: params.id,
-        }).then((error) => {
-          if (error) {
-            console.log('--- [Connect Transport]: error ', error);
+        })
+          .then(() => {
+            callback();
+          })
+          .catch((error) => {
+            console.log(
+              '--- [Producer Transport]: connect error ',
+              error,
+              '---'
+            );
             errback(error);
-          }
-
-          console.log('--- [Producer Transport] Connected ---');
-          callback();
-        });
+          });
       }
     );
 
-    this._producerTransport!.on(
+    this.producerTransport!.on(
       'produce',
       ({ kind, rtpParameters, appData }, callback, errback) => {
         console.log(`--- [Producer Transport]: produce ${kind} ---`);
@@ -209,15 +215,23 @@ export class SignalingHandler {
           kind,
           appData,
           rtpParameters,
-          transportId: this._producerTransport!.id,
-        }).then((producerId) => {
-          console.log(`--- [Producer Transport]: callback ${producerId} ---`);
-          callback({ id: producerId });
-        });
+          transportId: this.producerTransport!.id,
+        })
+          .then((producerId) => {
+            callback({ id: producerId });
+          })
+          .catch((error) => {
+            console.log(
+              '--- [Producer Transport]: produce error',
+              error,
+              '---'
+            );
+            errback(error);
+          });
       }
     );
 
-    this._producerTransport!.on('connectionstatechange', (state: string) => {
+    this.producerTransport!.on('connectionstatechange', (state: string) => {
       switch (state) {
         case 'connecting':
           console.log('--- [Producer Transport] Connecting ---');
@@ -227,7 +241,7 @@ export class SignalingHandler {
           break;
         case 'failed':
           console.log('--- [Producer Transport] Failed ---');
-          this._producerTransport?.close();
+          this.producerTransport?.close();
           break;
         default:
           break;
@@ -235,8 +249,8 @@ export class SignalingHandler {
     });
 
     console.log(
-      '--- [Signaling Handler]:createProducerTransport transport',
-      this._producerTransport.id,
+      '--- [Producer Transport]:createProducerTransport transport',
+      this.producerTransport.id,
       'created ---'
     );
 
@@ -247,25 +261,26 @@ export class SignalingHandler {
   private async createConsumerTransport(): Promise<void> {
     const params = await socketPromise(this.socket)('create_webrtc_transport');
 
-    this._consumerTransport = this._device!.createRecvTransport(params);
+    this.consumerTransport = this.device!.createRecvTransport(params);
 
-    this._consumerTransport!.on(
+    this.consumerTransport!.on(
       'connect',
       ({ dtlsParameters }, callback, errback) => {
         socketPromise(this.socket)('connect_transport', {
           dtlsParameters,
           transportId: params.id,
-        }).then((error) => {
-          if (error) {
+        })
+          .then(() => {
+            callback();
+          })
+          .catch((error) => {
+            console.log('--- [Consumer Transport]:connect error', error, '---');
             errback(error);
-          }
-
-          callback();
-        });
+          });
       }
     );
 
-    this._consumerTransport!.on('connectionstatechange', (state: string) => {
+    this.consumerTransport!.on('connectionstatechange', (state: string) => {
       switch (state) {
         case 'connecting':
           console.log('--- [Consumer Transport] Connecting ---');
@@ -275,7 +290,7 @@ export class SignalingHandler {
           break;
         case 'failed':
           console.log('--- [Consumer Transport] Failed ---');
-          this._consumerTransport?.close();
+          this.consumerTransport?.close();
           break;
         default:
           break;
@@ -283,7 +298,9 @@ export class SignalingHandler {
     });
 
     console.log(
-      '--- [Signaling Handler]:createConsumerTransport transport created ---'
+      '--- [Consumer Transport]:createConsumerTransport transport',
+      this.consumerTransport.id,
+      'created ---'
     );
   }
 
@@ -296,9 +313,8 @@ export class SignalingHandler {
       name: paritipantsProds.name,
     };
 
-    for (let producer of paritipantsProds.producers) {
-      // TODO delete kind, dont need it
-      const { consumer, stream, kind } = await this.createConsumer(
+    for (const producer of paritipantsProds.producers) {
+      const { consumer, stream } = await this.createConsumer(
         producer.id,
         paritipantsProds.peerId,
         producer.kind
@@ -316,21 +332,7 @@ export class SignalingHandler {
         };
       }
 
-      consumer.on('trackended', () => {
-        // TODO remove consumer
-        console.log(`--- [Consumer ${kind}] trackended`);
-      });
-
-      consumer.on('transportclose', () => {
-        // TODO remove consumer
-        console.log(`--- [Consumer ${kind}] transportclose`);
-      });
-
-      consumer.observer.on('close', () => {
-        console.log('--- consumer observer closed ---');
-      });
-
-      this._consumers.set(consumer.id, consumer);
+      this.consumers.set(consumer.id, consumer);
     }
 
     if (participant.video || participant.audio) {
@@ -351,15 +353,15 @@ export class SignalingHandler {
       this.socket
     )('consume', {
       producerId,
-      transportId: this._consumerTransport!.id,
-      rtpCapabilities: this._device!.rtpCapabilities,
+      transportId: this.consumerTransport!.id,
+      rtpCapabilities: this.device!.rtpCapabilities,
       appData: {
         peerId: participantId,
         kind: mediaKind,
       },
     });
 
-    const consumer = await this._consumerTransport!.consume({
+    const consumer = await this.consumerTransport!.consume({
       id: consumerId,
       kind,
       producerId,
@@ -367,6 +369,8 @@ export class SignalingHandler {
     });
 
     const stream = new MediaStream([consumer.track]);
+
+    console.log('Consumer Stream', stream);
 
     return {
       kind,
@@ -376,7 +380,7 @@ export class SignalingHandler {
   }
 
   private async produce(kind: string, source: MediaStream): Promise<void> {
-    if (this._producers.has(kind)) {
+    if (this.producers.has(kind)) {
       console.log(`--- [Produce] Producer already exists for kind: ${kind}`);
       return;
     }
@@ -398,7 +402,7 @@ export class SignalingHandler {
       console.log(`--- [Producer ${kind}] trackended`);
     });
 
-    this._producers.set(kind, producer);
+    this.producers.set(kind, producer);
   }
 
   private async createProducer(
@@ -415,7 +419,7 @@ export class SignalingHandler {
       case 'audio':
         console.log('--- [Create Producer] creating audio ---');
 
-        if (!this._device!.canProduce('audio')) {
+        if (!this.device!.canProduce('audio')) {
           console.log('--- [Create Producer] cannot produce audio ---');
           return;
         }
@@ -429,7 +433,7 @@ export class SignalingHandler {
         break;
 
       case 'video':
-        if (!this._device!.canProduce('video')) {
+        if (!this.device!.canProduce('video')) {
           console.log('--- [Create Producer] cannot produce video ---');
           return;
         }
@@ -456,7 +460,7 @@ export class SignalingHandler {
         break;
     }
 
-    const producer = await this._producerTransport!.produce(params);
+    const producer = await this.producerTransport!.produce(params);
 
     return producer;
   }
@@ -477,8 +481,8 @@ export class SignalingHandler {
   }
 
   private onProducerClosed({ peerId, kind, consumerId }: ClosedStatus): void {
-    this._consumers.get(consumerId)?.close();
-    this._consumers.delete(consumerId);
+    this.consumers.get(consumerId)?.close();
+    this.consumers.delete(consumerId);
 
     if (kind === 'screen') {
       setScreenStream(null);

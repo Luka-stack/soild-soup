@@ -4,6 +4,7 @@ import {
   MessageBody,
   SubscribeMessage,
   WebSocketGateway,
+  OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import type { Socket } from 'socket.io';
 
@@ -12,6 +13,7 @@ import { ConnectTransportDto } from './dto/connect-transport.dto';
 import { ConsumeDto } from './dto/consume.dto';
 import { JoinDto } from './dto/join-room.dto';
 import { ProduceDto } from './dto/produce.dto';
+import { ProducerPausedDto } from './dto/producer-paused.dto';
 import { SignalingService } from './signaling.service';
 
 @WebSocketGateway({
@@ -21,8 +23,12 @@ import { SignalingService } from './signaling.service';
 })
 @UsePipes(new ValidationPipe())
 @UseFilters(new AllExceptionsFilter())
-export class SignalingGateway {
+export class SignalingGateway implements OnGatewayDisconnect {
   constructor(private readonly signalingService: SignalingService) {}
+
+  handleDisconnect(client: Socket) {
+    return this.signalingService.disconnect(client);
+  }
 
   @SubscribeMessage('join')
   onJoin(@MessageBody() data: JoinDto, @ConnectedSocket() client: Socket) {
@@ -67,5 +73,26 @@ export class SignalingGateway {
     @ConnectedSocket() client: Socket,
   ) {
     return this.signalingService.consume(data, client);
+  }
+
+  @SubscribeMessage('producer_paused')
+  onProducerPaused(
+    @MessageBody() data: ProducerPausedDto,
+    @ConnectedSocket() client: Socket,
+  ) {
+    return this.signalingService.producerPaused(data, client);
+  }
+
+  @SubscribeMessage('producer_closed')
+  onProducerClosed(
+    @MessageBody('kind') kind: string,
+    @ConnectedSocket() client: Socket,
+  ) {
+    return this.signalingService.producerClosed(kind, client);
+  }
+
+  @SubscribeMessage('exit_room')
+  onExitRoom(@ConnectedSocket() client: Socket) {
+    return this.signalingService.disconnect(client);
   }
 }
