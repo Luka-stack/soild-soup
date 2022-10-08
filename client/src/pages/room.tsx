@@ -1,5 +1,5 @@
 import { useNavigate } from '@solidjs/router';
-import { For, Show } from 'solid-js';
+import { createMemo, For, Show } from 'solid-js';
 
 import { authRoom, participants, screenStream, username } from '../state';
 import { ParticipantCard } from './participant-card';
@@ -8,6 +8,10 @@ import { ScreenCard } from './screen-card';
 
 export const Room = () => {
   const navigate = useNavigate();
+
+  const roomSize = createMemo(() => {
+    return participants.length;
+  });
 
   if (!username() || !authRoom()) {
     navigate('/', { replace: true });
@@ -30,7 +34,7 @@ export const Room = () => {
             {(participant) => (
               <ParticipantCard
                 participant={participant}
-                roomSize={participants.length}
+                roomSize={roomSize()}
               />
             )}
           </For>

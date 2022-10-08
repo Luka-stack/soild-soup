@@ -22,6 +22,7 @@ export class SignalingService {
   joinRoom(
     { username, roomName, createRoom }: JoinDto,
     client: Socket,
+    server: any,
   ): Promise<RtpCapabilities | SocketException> {
     if (createRoom && this.msRooms.has(roomName)) {
       return new Promise((resolve) => {
@@ -34,6 +35,7 @@ export class SignalingService {
 
     if (!this.msRooms.has(roomName)) {
       this.msRooms.set(roomName, new MsRoom(roomName));
+      this.msRooms.get(roomName).setServer(server);
 
       this.broadcast(client, 'rooms', this.getRoomNames());
     }

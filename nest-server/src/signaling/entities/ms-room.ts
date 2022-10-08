@@ -1,4 +1,6 @@
 import type {
+  ActiveSpeakerObserver,
+  AudioLevelObserver,
   DtlsParameters,
   Router,
   RtpCapabilities,
@@ -20,10 +22,18 @@ export class MsRoom {
   private peers: Map<string, MsPeer>;
   private router: Router | null;
   private screenSharing = false;
+  private server: any;
+  private speaking: string | null = null;
+
+  private audioLevelObserver: AudioLevelObserver | null = null;
 
   constructor(public readonly name: string) {
     this.router = null;
     this.peers = new Map();
+  }
+
+  setServer(server: any) {
+    this.server = server;
   }
 
   addPeer(peer: MsPeer): void {
@@ -62,6 +72,25 @@ export class MsRoom {
   async getRouterCapabilities(): Promise<RtpCapabilities> {
     if (!this.router) {
       this.router = await createRouter();
+      this.audioLevelObserver = await this.router.createAudioLevelObserver({
+        maxEntries: 1,
+        threshold: -70,
+        interval: 1000,
+      });
+
+      this.audioLevelObserver.on('volumes', (volumes) => {
+        if (this.speaking === volumes[0].producer.appData.peerId) {
+          return;
+        }
+
+        this.speaking = volumes[0].producer.appData.peerId as string;
+        this.server?.to(this.name).emit('speaking', this.speaking);
+      });
+
+      this.audioLevelObserver.on('silence', () => {
+        this.speaking = null;
+        this.server?.to(this.name).emit('silence');
+      });
     }
 
     return this.router.rtpCapabilities;
@@ -122,7 +151,7 @@ export class MsRoom {
     this.peers.get(peerId).connectTransport(params);
   }
 
-  produce(peerId: string, params: ProduceParams): Promise<PeerProducer> {
+  async produce(peerId: string, params: ProduceParams): Promise<PeerProducer> {
     if (params.appData.kind === 'screen' && this.screenSharing) {
       throw new Error('Cannot share another screen');
     }
@@ -133,7 +162,13 @@ export class MsRoom {
       throw new Error('User not connected');
     }
 
-    return peer.createProducer(params);
+    const data = await peer.createProducer(params);
+
+    if (params.appData.kind === 'audio') {
+      this.audioLevelObserver.addProducer({ producerId: data.producers[0].id });
+    }
+
+    return data;
   }
 
   async consume(socket: Socket, params: ConsumeParams): Promise<PeerConsumer> {
@@ -192,6 +227,7 @@ export class MsRoom {
       throw new Error('User not connected');
     }
 
-    this.peers.get(peerId).closeProducer(kind);
+    const producerId = this.peers.get(peerId).closeProducer(kind);
+    this.audioLevelObserver.removeProducer({ producerId });
   }
 }

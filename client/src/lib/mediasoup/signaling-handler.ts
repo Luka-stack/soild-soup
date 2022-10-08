@@ -521,6 +521,22 @@ export class SignalingHandler {
     this.socket.on('producer_closed', (status) => {
       this.onProducerClosed(status);
     });
+
+    this.socket.on('speaking', (volumes) => {
+      setParticipants(
+        (participant) => participant.uuid === volumes,
+        'speaking',
+        () => true
+      );
+    });
+
+    this.socket.on('silence', () => {
+      setParticipants(
+        (participant) => participant.speaking === true,
+        'speaking',
+        () => false
+      );
+    });
   }
 
   private async getMediaStream(kind: 'video' | 'audio' | 'screen') {

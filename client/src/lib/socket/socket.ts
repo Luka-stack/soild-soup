@@ -10,7 +10,7 @@ export namespace WebSocket {
 
       _socket.onAny((event, ...args) => {
         console.group(`[Socket]:${event}`);
-        console.log(`Args ${args}`);
+        console.log('Args', args);
         console.groupEnd();
       });
 

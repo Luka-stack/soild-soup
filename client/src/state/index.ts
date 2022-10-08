@@ -5,6 +5,7 @@ export interface Participant {
   uuid: string;
   name: string;
   muted: boolean;
+  speaking: boolean;
   audio: MediaStream;
   video: MediaStream | undefined;
 }
@@ -38,6 +39,7 @@ export const updateParticipants = ({
         name,
         audio: audio!,
         video,
+        speaking: false,
         muted: false,
       },
     ]);

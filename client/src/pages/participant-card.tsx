@@ -16,6 +16,7 @@ export const ParticipantCard: Component<Props> = ({
     <div
       class="p-1 text-slate-400 flex justify-center items-center relative shadow-2xl flex-col rounded-xl h-full border border-black/40"
       classList={{
+        'order-first speaking-video': participant.speaking,
         'w-52': screenStream() !== null,
         'w-full': screenStream() === null && roomSize === 1,
         'w-[49%]': screenStream() === null && roomSize === 2,
@@ -26,10 +27,11 @@ export const ParticipantCard: Component<Props> = ({
         <Match when={!participant.video}>
           <>
             <div
-              class="rounded-full w-28 h-28 flex justify-center items-center border-2 border-black cursor-default"
+              class="rounded-full w-28 h-28 flex justify-center items-center border-2 border-black cursor-default "
               classList={{
                 'bg-indigo-800': !participant.muted,
                 'bg-gray-800': participant.muted,
+                speaking: participant.speaking,
               }}
             >
               <h1 class="font-bold text-4xl">

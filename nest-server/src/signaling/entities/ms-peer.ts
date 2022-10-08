@@ -71,7 +71,7 @@ export class MsPeer {
     this.consumers.forEach((consumer) => consumer.close());
   }
 
-  closeProducer(kind: string) {
+  closeProducer(kind: string): string {
     let producerId: string | null = null;
 
     for (const prod of this.producers.values()) {
@@ -86,10 +86,11 @@ export class MsPeer {
       this.producers.delete(producerId);
 
       console.log(`--- [CloseProducer] producer of kind: ${kind} closed ---`);
-      return;
+      return producerId;
     }
 
     console.log(`--- [CloseProducer] producer of kind: ${kind} not foud ---`);
+    return '';
   }
 
   async connectTransport(params: {
@@ -118,7 +119,10 @@ export class MsPeer {
     const producer = await this.transports.get(transportId).produce({
       kind,
       rtpParameters,
-      appData,
+      appData: {
+        ...appData,
+        peerId: this.uuid,
+      },
     });
 
     console.log(

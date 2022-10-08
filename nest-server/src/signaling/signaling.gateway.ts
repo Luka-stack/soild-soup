@@ -5,6 +5,7 @@ import {
   SubscribeMessage,
   WebSocketGateway,
   OnGatewayDisconnect,
+  WebSocketServer,
 } from '@nestjs/websockets';
 import type { Socket } from 'socket.io';
 
@@ -24,6 +25,9 @@ import { SignalingService } from './signaling.service';
 @UsePipes(new ValidationPipe())
 @UseFilters(new AllExceptionsFilter())
 export class SignalingGateway implements OnGatewayDisconnect {
+  @WebSocketServer()
+  server: any;
+
   constructor(private readonly signalingService: SignalingService) {}
 
   handleDisconnect(client: Socket) {
@@ -32,7 +36,7 @@ export class SignalingGateway implements OnGatewayDisconnect {
 
   @SubscribeMessage('join')
   onJoin(@MessageBody() data: JoinDto, @ConnectedSocket() client: Socket) {
-    return this.signalingService.joinRoom(data, client);
+    return this.signalingService.joinRoom(data, client, this.server);
   }
 
   @SubscribeMessage('start_session')
