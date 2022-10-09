@@ -1,7 +1,6 @@
 import type {
   Consumer,
   DtlsParameters,
-  MediaKind,
   Producer,
   Transport,
 } from 'mediasoup/node/lib/types';
@@ -11,19 +10,19 @@ import { ConsumeParams, MediaStreamKind, ProduceParams } from './types';
 
 export class MsPeer {
   public readonly uuid: string;
-  private _transports: Map<string, Transport>;
-  private _producers: Map<string, Producer>;
-  private _consumers: Map<string, Consumer>;
+  private transports: Map<string, Transport>;
+  private producers: Map<string, Producer>;
+  private consumers: Map<string, Consumer>;
 
   constructor(public readonly id: string, public readonly name: string) {
     this.uuid = uuidv4();
-    this._transports = new Map();
-    this._producers = new Map();
-    this._consumers = new Map();
+    this.transports = new Map();
+    this.producers = new Map();
+    this.consumers = new Map();
   }
 
   addTransport(transport: Transport): void {
-    if (this._transports.has(transport.id)) {
+    if (this.transports.has(transport.id)) {
       console.log(
         `--- [AddTransport] transport ${transport.id} already assigned`
       );
@@ -32,21 +31,21 @@ export class MsPeer {
 
     console.log('--- [MsPeer]:addTransport transport', transport.id, 'added');
 
-    this._transports.set(transport.id, transport);
+    this.transports.set(transport.id, transport);
   }
 
   async connectTransport(params: {
     transportId: string;
     dtlsParameters: DtlsParameters;
   }): Promise<void> {
-    if (!this._transports.has(params.transportId)) {
+    if (!this.transports.has(params.transportId)) {
       console.log(
         `--- [ConnectTransport] transport ${params.transportId} doesnt exist`
       );
       throw new Error("Transport doesn't exist");
     }
 
-    await this._transports.get(params.transportId)!.connect({
+    await this.transports.get(params.transportId)!.connect({
       dtlsParameters: params.dtlsParameters,
     });
   }
@@ -57,12 +56,12 @@ export class MsPeer {
     rtpParameters,
     appData,
   }: ProduceParams): Promise<Producer> {
-    if (!this._transports.has(transportId)) {
+    if (!this.transports.has(transportId)) {
       console.log(`--- [CreateProducer] transport ${transportId} doesnt exist`);
       throw new Error(`Transport ${transportId} doesn't exist`);
     }
 
-    const producer = await this._transports.get(transportId)!.produce({
+    const producer = await this.transports.get(transportId)!.produce({
       kind,
       rtpParameters,
       appData,
@@ -72,10 +71,10 @@ export class MsPeer {
       console.log(`--- [Producer ${producer.id}] transport closed ---`);
 
       producer.close();
-      this._producers.delete(producer.id);
+      this.producers.delete(producer.id);
     });
 
-    this._producers.set(producer.id, producer);
+    this.producers.set(producer.id, producer);
 
     return producer;
   }
@@ -86,13 +85,13 @@ export class MsPeer {
     rtpCapabilities,
     appData,
   }: ConsumeParams): Promise<Consumer> {
-    if (!this._transports.has(transportId)) {
+    if (!this.transports.has(transportId)) {
       console.log(`--- [CreateConsumer] transport ${transportId} doesnt exist`);
       throw new Error("Transport doesn't exist");
     }
 
     try {
-      const consumer = await this._transports.get(transportId)!.consume({
+      const consumer = await this.transports.get(transportId)!.consume({
         producerId,
         rtpCapabilities,
         paused: false,
@@ -110,10 +109,10 @@ export class MsPeer {
         console.log(`--- [Consumer ${consumer.id}] transport closed ---`);
 
         consumer.close();
-        this._consumers.delete(consumer.id);
+        this.consumers.delete(consumer.id);
       });
 
-      this._consumers.set(consumer.id, consumer);
+      this.consumers.set(consumer.id, consumer);
       return consumer;
     } catch (error) {
       console.log('--- [CreateConsumer] consume failed ---', error);
@@ -122,13 +121,13 @@ export class MsPeer {
   }
 
   removeConsumer(consumerId: string): void {
-    this._consumers.get(consumerId)?.close();
-    this._consumers.delete(consumerId);
+    this.consumers.get(consumerId)?.close();
+    this.consumers.delete(consumerId);
   }
 
   getProducers(): { id: string; kind: MediaStreamKind }[] {
     const producers: { id: string; kind: MediaStreamKind }[] = [];
-    for (let producer of this._producers.values()) {
+    for (let producer of this.producers.values()) {
       producers.push({
         id: producer.id,
         kind: producer.appData.kind as MediaStreamKind,
@@ -139,17 +138,17 @@ export class MsPeer {
   }
 
   pauseProducer(producerId: string): void {
-    this._producers.get(producerId)?.pause();
+    this.producers.get(producerId)?.pause();
   }
 
   resumeProducer(producerId: string): void {
-    this._producers.get(producerId)?.resume();
+    this.producers.get(producerId)?.resume();
   }
 
-  closeProducer(kind: MediaStreamKind): void {
+  closeProducer(kind: MediaStreamKind): string {
     let producerId: string | null = null;
 
-    for (let prod of this._producers.values()) {
+    for (let prod of this.producers.values()) {
       if (prod.appData.kind === kind) {
         producerId = prod.id;
         break;
@@ -157,18 +156,19 @@ export class MsPeer {
     }
 
     if (producerId) {
-      this._producers.get(producerId)!.close();
-      this._producers.delete(producerId);
+      this.producers.get(producerId)!.close();
+      this.producers.delete(producerId);
 
       console.log(`--- [CloseProducer] producer of kind: ${kind} closed ---`);
 
-      return;
+      return producerId;
     }
 
     console.log(`--- [CloseProducer] producer of kind: ${kind} not foud ---`);
+    return '';
   }
 
   close(): void {
-    this._transports.forEach((transport) => transport.close());
+    this.transports.forEach((transport) => transport.close());
   }
 }

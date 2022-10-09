@@ -48,3 +48,8 @@ export interface JoinRoomPayload {
   username: string;
   createRoom: boolean;
 }
+
+export interface SocketException {
+  error: string;
+  message: string[];
+}

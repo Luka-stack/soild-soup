@@ -1,4 +1,5 @@
 import type {
+  AudioLevelObserver,
   DtlsParameters,
   Router,
   RtpCapabilities,
@@ -17,23 +18,29 @@ import {
 import { Server } from 'socket.io';
 
 export class MsRoom {
-  private _peers: Map<string, MsPeer>;
-  private _router: Router | null;
-  private _screenSharing = false;
+  private peers: Map<string, MsPeer>;
+  private router: Router | null;
+  private screenSharing = false;
+  private audioLevelObserver: AudioLevelObserver | null = null;
+  private speaking: string | null = null;
 
   constructor(public readonly name: string, private readonly server: Server) {
-    this._router = null;
-    this._peers = new Map();
+    this.router = null;
+    this.peers = new Map();
   }
 
   addPeer(peer: MsPeer): void {
-    this._peers.set(peer.id, peer);
+    this.peers.set(peer.id, peer);
 
     console.log('--- [MsRoom]:addPeer user', peer.name, 'added ---');
   }
 
+  getPeersNumber(): number {
+    return this.peers.size;
+  }
+
   removePeer(peerId: string): void {
-    const peer = this._peers.get(peerId);
+    const peer = this.peers.get(peerId);
 
     if (!peer) {
       console.log(`--- [RemovePeer] peer ${peerId} not found ---`);
@@ -41,12 +48,12 @@ export class MsRoom {
     }
 
     peer.close();
-    this._peers.delete(peer.id);
+    this.peers.delete(peer.id);
     this.broadcast('', 'participant_left', peer.uuid);
   }
 
   async createWebRtcTransport(peerId: string): Promise<TransportParams> {
-    const peer = this._peers.get(peerId);
+    const peer = this.peers.get(peerId);
 
     if (!peer) {
       console.log(`--- [CreateWebRtcTransport] peer ${peerId} not found ---`);
@@ -56,7 +63,7 @@ export class MsRoom {
     const { maxIncomingBitrate, initialAvailableOutgoingBitrate, listenIps } =
       config.mediasoup.webRtcTransport;
 
-    const transport = await this._router!.createWebRtcTransport({
+    const transport = await this.router!.createWebRtcTransport({
       listenIps,
       enableUdp: true,
       enableTcp: true,
@@ -96,7 +103,7 @@ export class MsRoom {
     peerId: string,
     params: { transportId: string; dtlsParameters: DtlsParameters }
   ): Promise<void> {
-    const peer = this._peers.get(peerId);
+    const peer = this.peers.get(peerId);
 
     if (!peer) {
       console.log(`--- [ConnectTransport] peer ${peerId} not found ---`);
@@ -111,12 +118,12 @@ export class MsRoom {
   }
 
   async produce(peerId: string, params: ProduceParams): Promise<string> {
-    if (params.appData.kind === 'screen' && this._screenSharing) {
+    if (params.appData.kind === 'screen' && this.screenSharing) {
       console.log(`--- [Produce] screen is already sharing ---`);
       throw new Error('Cannot share another screen');
     }
 
-    const peer = this._peers.get(peerId);
+    const peer = this.peers.get(peerId);
 
     if (!peer) {
       console.log(`--- [Produce] peer ${peerId} not found ---`);
@@ -129,6 +136,12 @@ export class MsRoom {
       `--- [MsRoom]:produce; created producer ${producer.id} for ${peerId}, ${params.appData.kind} ---`
     );
 
+    if (params.appData.kind === 'audio') {
+      this.audioLevelObserver!.addProducer({
+        producerId: producer.id,
+      });
+    }
+
     return producer.id;
   }
 
@@ -136,7 +149,7 @@ export class MsRoom {
     peerId: string,
     params: ConsumeParams
   ): Promise<ConsumerParams> {
-    const peer = this._peers.get(peerId);
+    const peer = this.peers.get(peerId);
 
     if (!peer) {
       console.log(`--- [Consume] peer ${peerId} not found ---`);
@@ -144,7 +157,7 @@ export class MsRoom {
     }
 
     if (
-      !this._router!.canConsume({
+      !this.router!.canConsume({
         producerId: params.producerId,
         rtpCapabilities: params.rtpCapabilities,
       })
@@ -153,7 +166,7 @@ export class MsRoom {
       throw new Error('Consume cannot consume');
     }
 
-    const consumer = await this._peers.get(peerId)!.createConsumer(params);
+    const consumer = await this.peers.get(peerId)!.createConsumer(params);
 
     consumer.on('producerclose', () => {
       console.log('--- [Consumer] producer closed ---');
@@ -177,20 +190,43 @@ export class MsRoom {
   }
 
   async getRouterCapabilities(): Promise<RtpCapabilities> {
-    if (!this._router) {
+    if (!this.router) {
       await this.initRouter();
+      await this.initObservers();
     }
 
-    return this._router!.rtpCapabilities;
+    return this.router!.rtpCapabilities;
+  }
+
+  private async initObservers() {
+    this.audioLevelObserver = await this.router!.createAudioLevelObserver({
+      maxEntries: 1,
+      threshold: -70,
+      interval: 1000,
+    });
+
+    this.audioLevelObserver.on('volumes', (volumes) => {
+      if (this.speaking === volumes[0].producer.appData.peerId) {
+        return;
+      }
+
+      this.speaking = volumes[0].producer.appData.peerId as string;
+      this.server.to(this.name).emit('speaking', this.speaking);
+    });
+
+    this.audioLevelObserver.on('silence', () => {
+      this.speaking = null;
+      this.server.to(this.name).emit('silence');
+    });
   }
 
   private async initRouter() {
-    this._router = await createRouter();
+    this.router = await createRouter();
     console.log('--- [MsRoom]:initRouter router initialized ---');
   }
 
   broadcast(id: string, type: string, data: any) {
-    for (let peer of this._peers.values()) {
+    for (let peer of this.peers.values()) {
       if (peer.id === id) continue;
 
       this.server.to(peer.id).emit(type, data);
@@ -198,7 +234,7 @@ export class MsRoom {
   }
 
   broadcastProducer(id: string, producerId: string, kind: MediaStreamKind) {
-    const peer = this._peers.get(id);
+    const peer = this.peers.get(id);
 
     if (!peer) return;
 
@@ -219,7 +255,7 @@ export class MsRoom {
   sendProducers(id: string) {
     const producerList = [];
 
-    for (let peer of this._peers.values()) {
+    for (let peer of this.peers.values()) {
       if (peer.id === id) continue;
       producerList.push({
         peerId: peer.uuid,
@@ -232,7 +268,7 @@ export class MsRoom {
   }
 
   pauseProducer(id: string, producerId: string, paused: boolean) {
-    const peer = this._peers.get(id);
+    const peer = this.peers.get(id);
     if (!peer) return;
 
     console.log('--- [PauseProducer] producer paused', paused, '---');
@@ -247,9 +283,10 @@ export class MsRoom {
   }
 
   closeProducer(id: string, kind: MediaStreamKind) {
-    const peer = this._peers.get(id);
+    const peer = this.peers.get(id);
     if (!peer) return;
 
-    peer.closeProducer(kind);
+    const producerId = peer.closeProducer(kind);
+    this.audioLevelObserver!.removeProducer({ producerId });
   }
 }

@@ -1,5 +1,4 @@
 import type {
-  ActiveSpeakerObserver,
   AudioLevelObserver,
   DtlsParameters,
   Router,

@@ -8,17 +8,18 @@ import {
   JoinRoomPayload,
   MediaStreamKind,
   ProduceParams,
+  SocketException,
   TransportParams,
 } from './types';
 import type { RtpCapabilities } from 'mediasoup/node/lib/types';
 
 export class MsServer {
-  private _server: Server;
-  private _msRooms: Map<String, MsRoom>;
+  private server: Server;
+  private msRooms: Map<String, MsRoom>;
 
   constructor(httpServer: HttpServer) {
-    this._msRooms = new Map();
-    this._server = new Server(httpServer, {
+    this.msRooms = new Map();
+    this.server = new Server(httpServer, {
       cors: {
         origin: '*',
       },
@@ -31,18 +32,21 @@ export class MsServer {
   async joinRoom(
     socket: Socket,
     { username, roomName, createRoom }: JoinRoomPayload,
-    callback: (response: { error?: string; data?: RtpCapabilities }) => void
+    callback: (response: SocketException | RtpCapabilities) => void
   ): Promise<void> {
-    let msRoom = this._msRooms.get(roomName);
+    let msRoom = this.msRooms.get(roomName);
 
     if (createRoom && msRoom) {
-      callback({ error: 'Room already exists' });
+      callback({
+        error: 'Room Error',
+        message: ['Room already exists'],
+      });
       return;
     }
 
     if (!msRoom) {
-      msRoom = new MsRoom(roomName, this._server);
-      this._msRooms.set(roomName, msRoom);
+      msRoom = new MsRoom(roomName, this.server);
+      this.msRooms.set(roomName, msRoom);
       console.log('--- [MsServer]:JoinRoom created new room ', roomName, '---');
 
       this.broadcastRooms();
@@ -51,42 +55,45 @@ export class MsServer {
     const peer = new MsPeer(socket.id, username);
     msRoom.addPeer(peer);
     socket.data.roomName = roomName;
+    socket.data.peerId = peer.uuid;
+    socket.join(roomName);
 
     const routerParams = await msRoom.getRouterCapabilities();
-    callback({ data: routerParams });
+    callback(routerParams);
   }
 
   broadcastRooms(socket?: Socket) {
     const rooms: string[] = [];
 
-    for (const room of this._msRooms.values()) {
+    for (const room of this.msRooms.values()) {
       rooms.push(room.name);
     }
 
     if (socket) {
       socket.emit('rooms', rooms);
     } else {
-      this._server.emit('rooms', rooms);
+      this.server.emit('rooms', rooms);
     }
   }
 
   async onCreateWebRtcTransport(
     socket: Socket,
-    callback: (params: TransportParams) => void
+    callback: (response: SocketException | TransportParams) => void
   ): Promise<void> {
     const roomName = socket.data.roomName;
 
     console.log('--- socket.data ---', socket.data);
 
-    if (!this._msRooms.has(roomName)) {
-      console.log(
-        `--- [onCreateWebRtcTransport] room ${roomName} doesnt exist ---`
-      );
+    if (!this.msRooms.has(roomName)) {
+      callback({
+        error: 'Room Error',
+        message: ["Room doesn't exist"],
+      });
       return;
     }
 
     try {
-      const params = await this._msRooms
+      const params = await this.msRooms
         .get(roomName)!
         .createWebRtcTransport(socket.id);
 
@@ -95,48 +102,63 @@ export class MsServer {
       );
 
       callback(params);
-    } catch (error) {
+    } catch (error: any) {
       console.log(`--- [onCreateWebRtcTransport] ${error} ---`);
+      callback({
+        error: 'Transport Error',
+        message: [error.message],
+      });
     }
   }
 
   async onConnectTransport(
     socket: Socket,
     params: any,
-    callback: (error?: Error) => void
+    callback: (response: SocketException | boolean) => void
   ): Promise<void> {
     const roomName = socket.data.roomName;
-    if (!this._msRooms.has(roomName)) {
+    if (!this.msRooms.has(roomName)) {
       console.log(`--- [onConnectTransport] room ${roomName} doesnt exist ---`);
+      callback({
+        error: 'Room Error',
+        message: ["Room doesn't exist"],
+      });
       return;
     }
 
     try {
-      await this._msRooms.get(roomName)!.connectTransport(socket.id, params);
-      callback();
-    } catch (error) {
-      callback(error as Error);
+      await this.msRooms.get(roomName)!.connectTransport(socket.id, params);
+      callback(true);
+    } catch (error: any) {
+      callback({
+        error: 'Connection Error',
+        message: [error.message],
+      });
     }
   }
 
   async onProduce(
     socket: Socket,
     params: ProduceParams,
-    callback: (producerId: string) => void
+    callback: (response: SocketException | string) => void
   ): Promise<void> {
     const roomName = socket.data.roomName;
-    if (!this._msRooms.has(roomName)) {
+    if (!this.msRooms.has(roomName)) {
       console.log(`--- [onConnectTransport] room ${roomName} doesnt exist ---`);
+      callback({
+        error: 'Room Error',
+        message: ["Room doesn't exist"],
+      });
       return;
     }
 
-    const producerId = await this._msRooms
+    const producerId = await this.msRooms
       .get(roomName)!
       .produce(socket.id, params);
 
     callback(producerId);
 
-    this._msRooms
+    this.msRooms
       .get(roomName)!
       .broadcastProducer(socket.id, producerId, params.appData.kind);
   }
@@ -144,71 +166,82 @@ export class MsServer {
   async onConsume(
     socket: Socket,
     params: ConsumeParams,
-    callback: (params: ConsumerParams) => void
+    callback: (response: SocketException | ConsumerParams) => void
   ): Promise<void> {
     const roomName = socket.data.roomName;
-    if (!this._msRooms.has(roomName)) {
+    if (!this.msRooms.has(roomName)) {
       console.log(`--- [onConsume] room ${roomName} doesnt exist ---`);
+      callback({
+        error: 'Room Error',
+        message: ["Room doesn't exist"],
+      });
       return;
     }
 
     try {
-      const consumerParams = await this._msRooms
+      const consumerParams = await this.msRooms
         .get(roomName)!
         .consume(socket.id, params);
       callback(consumerParams);
-    } catch (error) {
+    } catch (error: any) {
       console.log('--- [onConsume] error ---', error);
-      // TODO send error
+      callback({
+        error: 'Consume Error',
+        message: [error.message],
+      });
     }
   }
 
   onGetProducers(socket: Socket): void {
     const roomName = socket.data.roomName;
-    if (!this._msRooms.has(roomName)) {
+    if (!this.msRooms.has(roomName)) {
       console.log(`--- [onGetProducers] room ${roomName} doesnt exist ---`);
       return;
     }
 
-    this._msRooms.get(roomName)!.sendProducers(socket.id);
+    this.msRooms.get(roomName)!.sendProducers(socket.id);
   }
 
   onProducerPaused(socket: Socket, producerId: string, paused: boolean): void {
     const roomName = socket.data.roomName;
-    if (!this._msRooms.has(roomName)) {
+    if (!this.msRooms.has(roomName)) {
       console.log(`--- [onProducerPaused] room ${roomName} doesnt exist ---`);
       return;
     }
 
-    this._msRooms.get(roomName)!.pauseProducer(socket.id, producerId, paused);
+    this.msRooms.get(roomName)!.pauseProducer(socket.id, producerId, paused);
   }
 
   onProducerClosed(socket: Socket, kind: MediaStreamKind): void {
     const roomName = socket.data.roomName;
-    if (!this._msRooms.has(roomName)) {
+    if (!this.msRooms.has(roomName)) {
       console.log(`--- [onProducerPaused] room ${roomName} doesnt exist ---`);
       return;
     }
 
-    this._msRooms.get(roomName)!.closeProducer(socket.id, kind);
+    this.msRooms.get(roomName)!.closeProducer(socket.id, kind);
   }
 
   onDisconnect(socket: Socket): void {
     const roomName = socket.data.roomName;
-    if (!this._msRooms.has(roomName)) {
+    if (!this.msRooms.has(roomName)) {
       console.log(`--- [Disconnect] room ${roomName} doesnt exist ---`);
       return;
     }
 
-    this._msRooms.get(roomName)!.removePeer(socket.id);
+    this.msRooms.get(roomName)!.removePeer(socket.id);
 
-    if (!this._msRooms.size) {
-      this._msRooms.delete(roomName);
+    socket.leave(roomName);
+    socket.data = {};
+
+    if (!this.msRooms.get(roomName)!.getPeersNumber()) {
+      this.msRooms.delete(roomName);
+      this.broadcastRooms();
     }
   }
 
   initListeners() {
-    this._server.on('connection', (socket) => {
+    this.server.on('connection', (socket) => {
       socket.on('start_session', () => {
         console.log(`--- Socket ${socket.id} connected to server ---`);
 
